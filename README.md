@@ -104,7 +104,7 @@ https://dashboard.tenderly.co/tx/bnb-testnet/0x762232c2de3cd3aaf5bda6350f923646e
 		"address": "0x04E0459121DB7D49AE932428762a44B616E967D6"
 	},
 	"usdt": {
-		"address": "0xc48105A8BC482ade2822ED2c4159Cc85AF1249A1"
+		"address": "0xa83C8A2162225c0DeD2d288FaF453076682a861C"
 	},
 	"uniswapV3Factory": {
 		"address": "0xFB1370296ab08f5404653b57F845C73885574D63"
@@ -163,93 +163,6 @@ https://dashboard.tenderly.co/tx/bnb-testnet/0x762232c2de3cd3aaf5bda6350f923646e
 		"args": {
 			"factory": "0xFB1370296ab08f5404653b57F845C73885574D63",
 			"weth": "0x04E0459121DB7D49AE932428762a44B616E967D6"
-		}
-	}
-}
-```
-
-
-
-### base sepolia
-
-```
-{
-	"weth": {
-		"address": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206"
-	},
-	"uniswapV3Factory": {
-		"address": "0xD426591043b9413b271565dc254a8FFC9c88F5Fe"
-	},
-	"uniswapInterfaceMulticall": {
-		"address": "0x6bf992f14bABb1aD23634B2F7685e4562A649f26"
-	},
-	"proxyAdmin": {
-		"address": "0xe420E4f6Adf835D064DE45e11c5dbfB0d008bBf9"
-	},
-	"tickLens": {
-		"address": "0xF085fe428310a4429f171BE701Df3c19899570A7"
-	},
-	"nftDescriptor": {
-		"address": "0x4A039a63fa3e5C8a35bE71eF582Af0Df8b22c4B3"
-	},
-	"nonfungibleTokenPositionDescriptorImpl": {
-		"address": "0x2c7A6775F5078d278512b2f425c4b3fcb8D0f8Ba",
-		"args": {
-			"weth": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206"
-		}
-	},
-	"nonfungibleTokenPositionDescriptor": {
-		"address": "0x1871e63b8CE86a34a3488E48b924B6710D42e259",
-		"args": {
-			"logic": "0x2c7A6775F5078d278512b2f425c4b3fcb8D0f8Ba",
-			"admin": "0xe420E4f6Adf835D064DE45e11c5dbfB0d008bBf9",
-			"data": "0x"
-		}
-	},
-	"nonfungiblePositionManager": {
-		"address": "0x82fBA8645B5aE6E5c13D07A19a68e1ceF886aAF7",
-		"args": {
-			"factory": "0xD426591043b9413b271565dc254a8FFC9c88F5Fe",
-			"weth": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206",
-			"tokenDescriptor": "0x1871e63b8CE86a34a3488E48b924B6710D42e259"
-		}
-	},
-	"v3Migrator": {
-		"address": "0x1F55398E641a9EA28AfaFAaceb62E226ee39bb25",
-		"args": {
-			"factory": "0xD426591043b9413b271565dc254a8FFC9c88F5Fe",
-			"weth": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206",
-			"nonfungiblePositionManager": "0x82fBA8645B5aE6E5c13D07A19a68e1ceF886aAF7"
-		}
-	},
-	"quoter": {
-		"address": "0x8B9A52402C53E0Cf093F38cAfD7CDc701f4CE34F",
-		"args": {
-			"factory": "0xD426591043b9413b271565dc254a8FFC9c88F5Fe",
-			"weth": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206"
-		}
-	},
-	"quoterV2": {
-		"address": "0x96636b79012e21508B9811C3044bB811beed91d4",
-		"args": {
-			"factory": "0xD426591043b9413b271565dc254a8FFC9c88F5Fe",
-			"weth": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206"
-		}
-	},
-	"swapRouter": {
-		"address": "0xD6A234b3274b3B7e361b0B8876Fc8f68AA58a612",
-		"args": {
-			"factory": "0xD426591043b9413b271565dc254a8FFC9c88F5Fe",
-			"weth": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206"
-		}
-	},
-	"swapRouter02": {
-		"address": "0x0acB7FfDF5E86DB29fCa8C4Cf8e6ABEed0e7e323",
-		"args": {
-			"v2Facotry": "0xEcCAFd901A6A2DC4A5cbeA17C790B765821cCb72",
-			"factory": "0xD426591043b9413b271565dc254a8FFC9c88F5Fe",
-			"positionManager": "0x82fBA8645B5aE6E5c13D07A19a68e1ceF886aAF7",
-			"weth": "0xb59f43AdC35FF42b8735F92e7edDa842b7C08206"
 		}
 	}
 }
