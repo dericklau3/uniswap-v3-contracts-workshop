@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity >=0.5.0 <0.8.0;
 
-/// @title Math library for computing sqrt prices from ticks and vice versa
-/// @notice Computes sqrt price for ticks of size 1.0001, i.e. sqrt(1.0001^tick) as fixed point Q64.96 numbers. Supports
-/// prices between 2**-128 and 2**128
+/// @title tick 与平方根价格互相转换的数学库
+/// @notice 每个 tick 对应 1.0001 的指数价格，将 sqrt(1.0001^tick) 表示为 Q64.96 定点数
+/// @dev 支持 2**-128 到 2**128 之间的价格
 library TickMath {
-    /// @dev The minimum tick that may be passed to #getSqrtRatioAtTick computed from log base 1.0001 of 2**-128
+    /// @dev getSqrtRatioAtTick 可接受的最小 tick，由 log base 1.0001 of 2**-128 计算得到
     int24 internal constant MIN_TICK = -887272;
-    /// @dev The maximum tick that may be passed to #getSqrtRatioAtTick computed from log base 1.0001 of 2**128
+    /// @dev getSqrtRatioAtTick 可接受的最大 tick，由 log base 1.0001 of 2**128 计算得到
     int24 internal constant MAX_TICK = -MIN_TICK;
 
-    /// @dev The minimum value that can be returned from #getSqrtRatioAtTick. Equivalent to getSqrtRatioAtTick(MIN_TICK)
+    /// @dev getSqrtRatioAtTick 可返回的最小值，等于 getSqrtRatioAtTick(MIN_TICK)
     uint160 internal constant MIN_SQRT_RATIO = 4295128739;
-    /// @dev The maximum value that can be returned from #getSqrtRatioAtTick. Equivalent to getSqrtRatioAtTick(MAX_TICK)
+    /// @dev getSqrtRatioAtTick 可返回的最大值，等于 getSqrtRatioAtTick(MAX_TICK)
     uint160 internal constant MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
 
-    /// @notice Calculates sqrt(1.0001^tick) * 2^96
-    /// @dev Throws if |tick| > max tick
-    /// @param tick The input tick for the above formula
-    /// @return sqrtPriceX96 A Fixed point Q64.96 number representing the sqrt of the ratio of the two assets (token1/token0)
-    /// at the given tick
+    /// @notice 计算 sqrt(1.0001^tick) * 2^96
+    /// @dev |tick| 超过最大范围时回退。通过 tick 的二进制分解选择预计算常量，避免链上幂运算
+    /// @param tick 公式中的输入 tick
+    /// @return sqrtPriceX96 给定 tick 下 token1/token0 价格比平方根的 Q64.96 表示
     function getSqrtRatioAtTick(int24 tick) internal pure returns (uint160 sqrtPriceX96) {
         uint256 absTick = tick < 0 ? uint256(-int256(tick)) : uint256(int256(tick));
         require(absTick <= uint256(MAX_TICK), 'T');
@@ -47,19 +46,18 @@ library TickMath {
 
         if (tick > 0) ratio = type(uint256).max / ratio;
 
-        // this divides by 1<<32 rounding up to go from a Q128.128 to a Q128.96.
-        // we then downcast because we know the result always fits within 160 bits due to our tick input constraint
-        // we round up in the division so getTickAtSqrtRatio of the output price is always consistent
+        // 除以 1<<32 并向上取整，把 Q128.128 转换为 Q128.96。
+        // tick 范围保证结果可放入 160 位；向上取整确保再调用 getTickAtSqrtRatio 时能得到一致 tick
         sqrtPriceX96 = uint160((ratio >> 32) + (ratio % (1 << 32) == 0 ? 0 : 1));
     }
 
-    /// @notice Calculates the greatest tick value such that getRatioAtTick(tick) <= ratio
-    /// @dev Throws in case sqrtPriceX96 < MIN_SQRT_RATIO, as MIN_SQRT_RATIO is the lowest value getRatioAtTick may
-    /// ever return.
-    /// @param sqrtPriceX96 The sqrt ratio for which to compute the tick as a Q64.96
-    /// @return tick The greatest tick for which the ratio is less than or equal to the input ratio
+    /// @notice 计算满足 getSqrtRatioAtTick(tick) <= sqrtPriceX96 的最大 tick
+    /// @dev 输入低于 MIN_SQRT_RATIO 或达到不可达的 MAX_SQRT_RATIO 时回退。
+    /// 先求二进制对数，再换底为 log base sqrt(1.0001)，最后在相邻候选 tick 中校验
+    /// @param sqrtPriceX96 待转换的 Q64.96 平方根价格比
+    /// @return tick 平方根价格不大于输入值的最大 tick
     function getTickAtSqrtRatio(uint160 sqrtPriceX96) internal pure returns (int24 tick) {
-        // second inequality must be < because the price can never reach the price at the max tick
+        // 上界必须使用严格小于，因为池价格永远不能真正到达最大 tick 对应价格
         require(sqrtPriceX96 >= MIN_SQRT_RATIO && sqrtPriceX96 < MAX_SQRT_RATIO, 'R');
         uint256 ratio = uint256(sqrtPriceX96) << 32;
 
@@ -195,7 +193,7 @@ library TickMath {
             log_2 := or(log_2, shl(50, f))
         }
 
-        int256 log_sqrt10001 = log_2 * 255738958999603826347141; // 128.128 number
+        int256 log_sqrt10001 = log_2 * 255738958999603826347141; // Q128.128 定点数
 
         int24 tickLow = int24((log_sqrt10001 - 3402992956809132418596140100660247210) >> 128);
         int24 tickHi = int24((log_sqrt10001 + 291339464771989622907027621153398088495) >> 128);

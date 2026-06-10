@@ -7,12 +7,11 @@ import '@openzeppelin/contracts/drafts/IERC20Permit.sol';
 import '../interfaces/ISelfPermit.sol';
 import '../interfaces/external/IERC20PermitAllowed.sol';
 
-/// @title Self Permit
-/// @notice Functionality to call permit on any EIP-2612-compliant token for use in the route
-/// @dev These functions are expected to be embedded in multicalls to allow EOAs to approve a contract and call a function
-/// that requires an approval in a single transaction.
+/// @title 自助 Permit
+/// @notice 在路由里直接调用支持 EIP-2612 的 token permit，省去用户单独 approve 的交易。
+/// @dev 通常嵌入 multicall：EOA 在同一笔交易里完成签名授权和需要授权的业务调用。
 abstract contract SelfPermit is ISelfPermit {
-    /// @inheritdoc ISelfPermit
+    /// @notice 使用标准 EIP-2612 permit 给当前合约授权。
     function selfPermit(
         address token,
         uint256 value,
@@ -24,7 +23,7 @@ abstract contract SelfPermit is ISelfPermit {
         IERC20Permit(token).permit(msg.sender, address(this), value, deadline, v, r, s);
     }
 
-    /// @inheritdoc ISelfPermit
+    /// @notice 仅在当前 allowance 不足时才执行标准 EIP-2612 permit。
     function selfPermitIfNecessary(
         address token,
         uint256 value,
@@ -36,7 +35,7 @@ abstract contract SelfPermit is ISelfPermit {
         if (IERC20(token).allowance(msg.sender, address(this)) < value) selfPermit(token, value, deadline, v, r, s);
     }
 
-    /// @inheritdoc ISelfPermit
+    /// @notice 使用 DAI 风格的 permitAllowed 接口给当前合约授权最大额度。
     function selfPermitAllowed(
         address token,
         uint256 nonce,
@@ -48,7 +47,7 @@ abstract contract SelfPermit is ISelfPermit {
         IERC20PermitAllowed(token).permit(msg.sender, address(this), nonce, expiry, true, v, r, s);
     }
 
-    /// @inheritdoc ISelfPermit
+    /// @notice 仅在当前 allowance 不是最大值时才执行 DAI 风格 permitAllowed。
     function selfPermitAllowedIfNecessary(
         address token,
         uint256 nonce,

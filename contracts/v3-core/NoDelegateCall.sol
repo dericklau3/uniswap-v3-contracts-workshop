@@ -1,25 +1,23 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity =0.7.6;
 
-/// @title Prevents delegatecall to a contract
-/// @notice Base contract that provides a modifier for preventing delegatecall to methods in a child contract
+/// @title 禁止 delegatecall 进入合约
+/// @notice 给子合约提供 noDelegateCall 修饰器，防止关键函数在代理上下文里执行。
 abstract contract NoDelegateCall {
-    /// @dev The original address of this contract
+    /// @dev 合约部署后的原始地址，用来和运行时 address(this) 对比。
     address private immutable original;
 
     constructor() {
-        // Immutables are computed in the init code of the contract, and then inlined into the deployed bytecode.
-        // In other words, this variable won't change when it's checked at runtime.
+        // immutable 在 init code 中计算，并内联进最终字节码；运行时检查时这个值不会变化。
         original = address(this);
     }
 
-    /// @dev Private method is used instead of inlining into modifier because modifiers are copied into each method,
-    ///     and the use of immutable means the address bytes are copied in every place the modifier is used.
+    /// @dev 单独抽成 private 函数，避免修饰器被复制到每个函数时重复嵌入 immutable 地址字节。
     function checkNotDelegateCall() private view {
         require(address(this) == original);
     }
 
-    /// @notice Prevents delegatecall into the modified method
+    /// @notice 阻止通过 delegatecall 调用被修饰的函数。
     modifier noDelegateCall() {
         checkNotDelegateCall();
         _;

@@ -14,16 +14,16 @@ contract UniswapV3PoolDeployer is IUniswapV3PoolDeployer {
         int24 tickSpacing;
     }
 
-    /// @inheritdoc IUniswapV3PoolDeployer
+    /// @notice 临时保存正在部署的池子参数，供 UniswapV3Pool 构造函数读取。
+    /// @dev deploy 完成后会立刻 delete，避免参数被后续部署误用。
     Parameters public override parameters;
 
-    /// @dev Deploys a pool with the given parameters by transiently setting the parameters storage slot and then
-    /// clearing it after deploying the pool.
-    /// @param factory The contract address of the Uniswap V3 factory
-    /// @param token0 The first token of the pool by address sort order
-    /// @param token1 The second token of the pool by address sort order
-    /// @param fee The fee collected upon every swap in the pool, denominated in hundredths of a bip
-    /// @param tickSpacing The spacing between usable ticks
+    /// @dev 通过临时写入 parameters 部署池子，让新池子构造函数能读取工厂、代币和费率信息。
+    /// @param factory Uniswap V3 工厂合约地址。
+    /// @param token0 按地址排序后的第一个代币。
+    /// @param token1 按地址排序后的第二个代币。
+    /// @param fee 池子每笔 swap 收取的手续费，单位是百万分之一。
+    /// @param tickSpacing 可用 tick 之间的间隔。
     function deploy(
         address factory,
         address token0,

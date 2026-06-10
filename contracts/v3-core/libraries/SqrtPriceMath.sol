@@ -8,30 +8,29 @@ import './FullMath.sol';
 import './UnsafeMath.sol';
 import './FixedPoint96.sol';
 
-/// @title Functions based on Q64.96 sqrt price and liquidity
-/// @notice Contains the math that uses square root of price as a Q64.96 and liquidity to compute deltas
+/// @title 基于 Q64.96 平方根价格和流动性的数学函数
+/// @notice 使用 Q64.96 格式的平方根价格与流动性计算价格变化和 token 数量变化
 library SqrtPriceMath {
     using LowGasSafeMath for uint256;
     using SafeCast for uint256;
 
-    /// @notice Gets the next sqrt price given a delta of token0
-    /// @dev Always rounds up, because in the exact output case (increasing price) we need to move the price at least
-    /// far enough to get the desired output amount, and in the exact input case (decreasing price) we need to move the
-    /// price less in order to not send too much output.
-    /// The most precise formula for this is liquidity * sqrtPX96 / (liquidity +- amount * sqrtPX96),
-    /// if this is impossible because of overflow, we calculate liquidity / (liquidity / sqrtPX96 +- amount).
-    /// @param sqrtPX96 The starting price, i.e. before accounting for the token0 delta
-    /// @param liquidity The amount of usable liquidity
-    /// @param amount How much of token0 to add or remove from virtual reserves
-    /// @param add Whether to add or remove the amount of token0
-    /// @return The price after adding or removing amount, depending on add
+    /// @notice 根据 token0 数量变化计算下一平方根价格
+    /// @dev 始终向上取整。精确输出时必须让价格至少移动到足以提供目标输出的位置；
+    /// 精确输入时则要避免因向下取整导致输出过多。精确公式为
+    /// liquidity * sqrtPX96 / (liquidity +- amount * sqrtPX96)，乘法溢出时改用等价公式
+    /// liquidity / (liquidity / sqrtPX96 +- amount)。
+    /// @param sqrtPX96 token0 变化前的起始平方根价格
+    /// @param liquidity 当前可用流动性
+    /// @param amount 加入或移出虚拟储备的 token0 数量
+    /// @param add 是否向虚拟储备加入 token0
+    /// @return 加入或移除 token0 后的平方根价格
     function getNextSqrtPriceFromAmount0RoundingUp(
         uint160 sqrtPX96,
         uint128 liquidity,
         uint256 amount,
         bool add
     ) internal pure returns (uint160) {
-        // we short circuit amount == 0 because the result is otherwise not guaranteed to equal the input price
+        // amount 为 0 时直接返回，避免后续舍入使结果偏离原价格
         if (amount == 0) return sqrtPX96;
         // liquidity * 2**96
         uint256 numerator1 = uint256(liquidity) << FixedPoint96.RESOLUTION;
@@ -42,7 +41,7 @@ library SqrtPriceMath {
                 // liquidity * 2**96  + (amount * sqrtPX96)
                 uint256 denominator = numerator1 + product;
                 if (denominator >= numerator1)
-                    // always fits in 160 bits
+                    // 结果始终可放入 160 位
                     // liquidity * 2**96 * sqrtPX96 / (liquidity * 2**96 + amount * sqrtPX96)
                     return uint160(FullMath.mulDivRoundingUp(numerator1, sqrtPX96, denominator));
             }
@@ -50,8 +49,7 @@ library SqrtPriceMath {
             return uint160(UnsafeMath.divRoundingUp(numerator1, (numerator1 / sqrtPX96).add(amount)));
         } else {
             uint256 product;
-            // if the product overflows, we know the denominator underflows
-            // in addition, we must check that the denominator does not underflow
+            // product 溢出意味着分母计算也不安全，同时必须显式防止分母下溢
             // liquidity * 2**96 * sqrt_p / (liquidity * 2**96 - amount * sqrt_p)
             require((product = amount * sqrtPX96) / amount == sqrtPX96 && numerator1 > product);
             uint256 denominator = numerator1 - product;
@@ -59,24 +57,22 @@ library SqrtPriceMath {
         }
     }
 
-    /// @notice Gets the next sqrt price given a delta of token1
-    /// @dev Always rounds down, because in the exact output case (decreasing price) we need to move the price at least
-    /// far enough to get the desired output amount, and in the exact input case (increasing price) we need to move the
-    /// price less in order to not send too much output.
-    /// The formula we compute is within <1 wei of the lossless version: sqrtPX96 +- amount / liquidity
-    /// @param sqrtPX96 The starting price, i.e., before accounting for the token1 delta
-    /// @param liquidity The amount of usable liquidity
-    /// @param amount How much of token1 to add, or remove, from virtual reserves
-    /// @param add Whether to add, or remove, the amount of token1
-    /// @return The price after adding or removing `amount`
+    /// @notice 根据 token1 数量变化计算下一平方根价格
+    /// @dev 始终向下取整。精确输出时必须让价格至少移动到足以提供目标输出的位置；
+    /// 精确输入时则要避免因价格移动过多而输出过量。计算结果与无损公式
+    /// sqrtPX96 +- amount / liquidity 的误差小于 1 wei。
+    /// @param sqrtPX96 token1 变化前的起始平方根价格
+    /// @param liquidity 当前可用流动性
+    /// @param amount 加入或移出虚拟储备的 token1 数量
+    /// @param add 是否向虚拟储备加入 token1
+    /// @return 加入或移除 token1 后的平方根价格
     function getNextSqrtPriceFromAmount1RoundingDown(
         uint160 sqrtPX96,
         uint128 liquidity,
         uint256 amount,
         bool add
     ) internal pure returns (uint160) {
-        // if we're adding (subtracting), rounding down requires rounding the quotient down (up)
-        // in both cases, avoid a mulDiv for most inputs
+        // 加入 token1 时商向下取整，移出时商向上取整；常见输入使用移位除法以节省 gas
         if (add) {
             uint256 quotient =
                 (
@@ -95,18 +91,18 @@ library SqrtPriceMath {
                 );
 
             require(sqrtPX96 > quotient);
-            // always fits 160 bits
+            // 结果始终可放入 160 位
             return uint160(sqrtPX96 - quotient);
         }
     }
 
-    /// @notice Gets the next sqrt price given an input amount of token0 or token1
-    /// @dev Throws if price or liquidity are 0, or if the next price is out of bounds
-    /// @param sqrtPX96 The starting price, i.e., before accounting for the input amount
-    /// @param liquidity The amount of usable liquidity
-    /// @param amountIn How much of token0, or token1, is being swapped in
-    /// @param zeroForOne Whether the amount in is token0 or token1
-    /// @return sqrtQX96 The price after adding the input amount to token0 or token1
+    /// @notice 根据精确输入的 token0 或 token1 数量计算下一平方根价格
+    /// @dev 价格或流动性为 0、或下一价格越界时回退
+    /// @param sqrtPX96 输入发生前的起始平方根价格
+    /// @param liquidity 当前可用流动性
+    /// @param amountIn 本次交换输入的 token0 或 token1 数量
+    /// @param zeroForOne 是否以 token0 换 token1
+    /// @return sqrtQX96 加入输入资产后的平方根价格
     function getNextSqrtPriceFromInput(
         uint160 sqrtPX96,
         uint128 liquidity,
@@ -116,21 +112,20 @@ library SqrtPriceMath {
         require(sqrtPX96 > 0);
         require(liquidity > 0);
 
-        // round to make sure that we don't pass the target price
-        // getNextSqrtPriceFromAmount0RoundingUp = 
+        // 选择保守舍入方向，确保本步价格不会越过目标价格
         return
             zeroForOne
                 ? getNextSqrtPriceFromAmount0RoundingUp(sqrtPX96, liquidity, amountIn, true)
                 : getNextSqrtPriceFromAmount1RoundingDown(sqrtPX96, liquidity, amountIn, true);
     }
 
-    /// @notice Gets the next sqrt price given an output amount of token0 or token1
-    /// @dev Throws if price or liquidity are 0 or the next price is out of bounds
-    /// @param sqrtPX96 The starting price before accounting for the output amount
-    /// @param liquidity The amount of usable liquidity
-    /// @param amountOut How much of token0, or token1, is being swapped out
-    /// @param zeroForOne Whether the amount out is token0 or token1
-    /// @return sqrtQX96 The price after removing the output amount of token0 or token1
+    /// @notice 根据精确输出的 token0 或 token1 数量计算下一平方根价格
+    /// @dev 价格或流动性为 0、或下一价格越界时回退
+    /// @param sqrtPX96 输出发生前的起始平方根价格
+    /// @param liquidity 当前可用流动性
+    /// @param amountOut 本次交换输出的 token0 或 token1 数量
+    /// @param zeroForOne 是否以 token0 换 token1
+    /// @return sqrtQX96 移出输出资产后的平方根价格
     function getNextSqrtPriceFromOutput(
         uint160 sqrtPX96,
         uint128 liquidity,
@@ -140,7 +135,7 @@ library SqrtPriceMath {
         require(sqrtPX96 > 0);
         require(liquidity > 0);
 
-        // round to make sure that we pass the target price
+        // 选择保守舍入方向，确保价格移动足以覆盖指定输出量
         // liquidity * 2**96 * sqrt_p / (liquidity * 2**96 - amount * sqrt_p)
         return
             zeroForOne
@@ -148,14 +143,14 @@ library SqrtPriceMath {
                 : getNextSqrtPriceFromAmount0RoundingUp(sqrtPX96, liquidity, amountOut, false);
     }
 
-    /// @notice Gets the amount0 delta between two prices
-    /// @dev Calculates liquidity / sqrt(lower) - liquidity / sqrt(upper),
-    /// i.e. liquidity * (sqrt(upper) - sqrt(lower)) / (sqrt(upper) * sqrt(lower))
-    /// @param sqrtRatioAX96 A sqrt price
-    /// @param sqrtRatioBX96 Another sqrt price
-    /// @param liquidity The amount of usable liquidity
-    /// @param roundUp Whether to round the amount up or down
-    /// @return amount0 Amount of token0 required to cover a position of size liquidity between the two passed prices
+    /// @notice 计算两个价格之间对应的 token0 数量变化
+    /// @dev 计算 liquidity / sqrt(lower) - liquidity / sqrt(upper)，即
+    /// liquidity * (sqrt(upper) - sqrt(lower)) / (sqrt(upper) * sqrt(lower))。
+    /// @param sqrtRatioAX96 一个平方根价格
+    /// @param sqrtRatioBX96 另一个平方根价格
+    /// @param liquidity 当前可用流动性
+    /// @param roundUp token 数量是否向上取整
+    /// @return amount0 在两个价格之间维持指定流动性所需的 token0 数量
     function getAmount0Delta(
         uint160 sqrtRatioAX96,
         uint160 sqrtRatioBX96,
@@ -180,13 +175,13 @@ library SqrtPriceMath {
                 : FullMath.mulDiv(numerator1, numerator2, sqrtRatioBX96) / sqrtRatioAX96;
     }
 
-    /// @notice Gets the amount1 delta between two prices
-    /// @dev Calculates liquidity * (sqrt(upper) - sqrt(lower))
-    /// @param sqrtRatioAX96 A sqrt price
-    /// @param sqrtRatioBX96 Another sqrt price
-    /// @param liquidity The amount of usable liquidity
-    /// @param roundUp Whether to round the amount up, or down
-    /// @return amount1 Amount of token1 required to cover a position of size liquidity between the two passed prices
+    /// @notice 计算两个价格之间对应的 token1 数量变化
+    /// @dev 计算 liquidity * (sqrt(upper) - sqrt(lower))
+    /// @param sqrtRatioAX96 一个平方根价格
+    /// @param sqrtRatioBX96 另一个平方根价格
+    /// @param liquidity 当前可用流动性
+    /// @param roundUp token 数量是否向上取整
+    /// @return amount1 在两个价格之间维持指定流动性所需的 token1 数量
     function getAmount1Delta(
         uint160 sqrtRatioAX96,
         uint160 sqrtRatioBX96,
@@ -202,11 +197,11 @@ library SqrtPriceMath {
                 : FullMath.mulDiv(liquidity, sqrtRatioBX96 - sqrtRatioAX96, FixedPoint96.Q96);
     }
 
-    /// @notice Helper that gets signed token0 delta
-    /// @param sqrtRatioAX96 A sqrt price
-    /// @param sqrtRatioBX96 Another sqrt price
-    /// @param liquidity The change in liquidity for which to compute the amount0 delta
-    /// @return amount0 Amount of token0 corresponding to the passed liquidityDelta between the two prices
+    /// @notice 计算带符号流动性变化对应的 token0 数量变化
+    /// @param sqrtRatioAX96 一个平方根价格
+    /// @param sqrtRatioBX96 另一个平方根价格
+    /// @param liquidity 待换算的流动性变化，负数表示移除流动性
+    /// @return amount0 两个价格之间与该流动性变化对应的 token0 数量
     function getAmount0Delta(
         uint160 sqrtRatioAX96,
         uint160 sqrtRatioBX96,
@@ -218,11 +213,11 @@ library SqrtPriceMath {
                 : getAmount0Delta(sqrtRatioAX96, sqrtRatioBX96, uint128(liquidity), true).toInt256();
     }
 
-    /// @notice Helper that gets signed token1 delta
-    /// @param sqrtRatioAX96 A sqrt price
-    /// @param sqrtRatioBX96 Another sqrt price
-    /// @param liquidity The change in liquidity for which to compute the amount1 delta
-    /// @return amount1 Amount of token1 corresponding to the passed liquidityDelta between the two prices
+    /// @notice 计算带符号流动性变化对应的 token1 数量变化
+    /// @param sqrtRatioAX96 一个平方根价格
+    /// @param sqrtRatioBX96 另一个平方根价格
+    /// @param liquidity 待换算的流动性变化，负数表示移除流动性
+    /// @return amount1 两个价格之间与该流动性变化对应的 token1 数量
     function getAmount1Delta(
         uint160 sqrtRatioAX96,
         uint160 sqrtRatioBX96,

@@ -7,22 +7,22 @@ import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 import '../interfaces/IPeripheryPaymentsExtended.sol';
 
 abstract contract PeripheryPaymentsExtended is IPeripheryPaymentsExtended, PeripheryPayments {
-    /// @inheritdoc IPeripheryPaymentsExtended
+    /// @notice 将本合约持有的 WETH9 解包成 ETH 并发送给调用者。
     function unwrapWETH9(uint256 amountMinimum) external payable override {
         unwrapWETH9(amountMinimum, msg.sender);
     }
 
-    /// @inheritdoc IPeripheryPaymentsExtended
+    /// @notice 把调用随附的 ETH 包装为 WETH9 留在本合约中。
     function wrapETH(uint256 value) external payable override {
         IWETH9(WETH9).deposit{value: value}();
     }
 
-    /// @inheritdoc IPeripheryPaymentsExtended
+    /// @notice 将本合约持有的指定 ERC20 全部扫给调用者。
     function sweepToken(address token, uint256 amountMinimum) external payable override {
         sweepToken(token, amountMinimum, msg.sender);
     }
 
-    /// @inheritdoc IPeripheryPaymentsExtended
+    /// @notice 从调用者拉取指定 ERC20 到本合约，常用于后续 multicall 内复用余额。
     function pull(address token, uint256 value) external payable override {
         TransferHelper.safeTransferFrom(token, msg.sender, address(this), value);
     }

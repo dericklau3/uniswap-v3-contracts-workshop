@@ -9,19 +9,19 @@ import '../interfaces/external/IERC1271.sol';
 import '../interfaces/IERC721Permit.sol';
 import './BlockTimestamp.sol';
 
-/// @title ERC721 with permit
-/// @notice Nonfungible tokens that support an approve via signature, i.e. permit
+/// @title 带 permit 的 ERC721
+/// @notice 支持通过签名完成 approve 的 NFT，也就是 ERC721 版本的 permit。
 abstract contract ERC721Permit is BlockTimestamp, ERC721, IERC721Permit {
-    /// @dev Gets the current nonce for a token ID and then increments it, returning the original value
+    /// @dev 获取 tokenId 当前 nonce 并自增，返回自增前的 nonce。
     function _getAndIncrementNonce(uint256 tokenId) internal virtual returns (uint256);
 
-    /// @dev The hash of the name used in the permit signature verification
+    /// @dev permit 签名校验中使用的 name 哈希。
     bytes32 private immutable nameHash;
 
-    /// @dev The hash of the version string used in the permit signature verification
+    /// @dev permit 签名校验中使用的 version 哈希。
     bytes32 private immutable versionHash;
 
-    /// @notice Computes the nameHash and versionHash
+    /// @notice 计算并缓存 nameHash 和 versionHash。
     constructor(
         string memory name_,
         string memory symbol_,
@@ -31,7 +31,7 @@ abstract contract ERC721Permit is BlockTimestamp, ERC721, IERC721Permit {
         versionHash = keccak256(bytes(version_));
     }
 
-    /// @inheritdoc IERC721Permit
+    /// @notice 返回 EIP-712 域分隔符，用于 permit 签名校验。
     function DOMAIN_SEPARATOR() public view override returns (bytes32) {
         return
             keccak256(
@@ -46,12 +46,13 @@ abstract contract ERC721Permit is BlockTimestamp, ERC721, IERC721Permit {
             );
     }
 
-    /// @inheritdoc IERC721Permit
-    /// @dev Value is equal to keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)");
+    /// @notice permit 消息结构的 typehash。
+    /// @dev 等于 keccak256("Permit(address spender,uint256 tokenId,uint256 nonce,uint256 deadline)")。
     bytes32 public constant override PERMIT_TYPEHASH =
         0x49ecf333e5b8c95c40fdafc95c1ad136e8914a8fb55e9dc8bb01eaa83a2df9ad;
 
-    /// @inheritdoc IERC721Permit
+    /// @notice 通过 NFT owner 的签名授权 spender 操作指定 tokenId。
+    /// @dev owner 是合约时使用 ERC1271 校验签名，owner 是 EOA 时使用 ecrecover。
     function permit(
         address spender,
         uint256 tokenId,

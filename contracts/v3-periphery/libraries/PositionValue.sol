@@ -10,15 +10,14 @@ import './LiquidityAmounts.sol';
 import './PoolAddress.sol';
 import './PositionKey.sol';
 
-/// @title Returns information about the token value held in a Uniswap V3 NFT
+/// @title 计算 Uniswap V3 头寸 NFT 持有的 token 价值
 library PositionValue {
-    /// @notice Returns the total amounts of token0 and token1, i.e. the sum of fees and principal
-    /// that a given nonfungible position manager token is worth
-    /// @param positionManager The Uniswap V3 NonfungiblePositionManager
-    /// @param tokenId The tokenId of the token for which to get the total value
-    /// @param sqrtRatioX96 The square root price X96 for which to calculate the principal amounts
-    /// @return amount0 The total amount of token0 including principal and fees
-    /// @return amount1 The total amount of token1 including principal and fees
+    /// @notice 返回指定头寸 NFT 的 token0 和 token1 总价值，即本金与手续费之和
+    /// @param positionManager Uniswap V3 NonfungiblePositionManager
+    /// @param tokenId 待估值头寸 NFT 的 tokenId
+    /// @param sqrtRatioX96 用于计算本金组成的 Q64.96 平方根价格
+    /// @return amount0 包含本金与手续费的 token0 总量
+    /// @return amount1 包含本金与手续费的 token1 总量
     function total(
         INonfungiblePositionManager positionManager,
         uint256 tokenId,
@@ -29,13 +28,14 @@ library PositionValue {
         return (amount0Principal + amount0Fee, amount1Principal + amount1Fee);
     }
 
-    /// @notice Calculates the principal (currently acting as liquidity) owed to the token owner in the event
-    /// that the position is burned
-    /// @param positionManager The Uniswap V3 NonfungiblePositionManager
-    /// @param tokenId The tokenId of the token for which to get the total principal owed
-    /// @param sqrtRatioX96 The square root price X96 for which to calculate the principal amounts
-    /// @return amount0 The principal amount of token0
-    /// @return amount1 The principal amount of token1
+    /// @notice 计算头寸在指定价格下若被销毁可取回的 token0 和 token1 本金
+    /// @dev 当前价格低于区间时本金全部表现为 token0，高于区间时全部表现为 token1，
+    /// 位于区间内时由两种 token 共同组成
+    /// @param positionManager Uniswap V3 NonfungiblePositionManager
+    /// @param tokenId 待计算本金的头寸 NFT tokenId
+    /// @param sqrtRatioX96 用于计算本金组成的 Q64.96 平方根价格
+    /// @return amount0 token0 本金数量
+    /// @return amount1 token1 本金数量
     function principal(
         INonfungiblePositionManager positionManager,
         uint256 tokenId,
@@ -65,11 +65,12 @@ library PositionValue {
         uint256 tokensOwed1;
     }
 
-    /// @notice Calculates the total fees owed to the token owner
-    /// @param positionManager The Uniswap V3 NonfungiblePositionManager
-    /// @param tokenId The tokenId of the token for which to get the total fees owed
-    /// @return amount0 The amount of fees owed in token0
-    /// @return amount1 The amount of fees owed in token1
+    /// @notice 计算头寸所有者当前可获得的手续费总额
+    /// @dev 结果包含 PositionManager 已记账的 tokensOwed，以及从上次快照至今尚未记账的池内手续费增长
+    /// @param positionManager Uniswap V3 NonfungiblePositionManager
+    /// @param tokenId 待计算手续费的头寸 NFT tokenId
+    /// @return amount0 应得的 token0 手续费
+    /// @return amount1 应得的 token1 手续费
     function fees(INonfungiblePositionManager positionManager, uint256 tokenId)
         internal
         view

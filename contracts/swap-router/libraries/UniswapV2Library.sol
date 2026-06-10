@@ -7,14 +7,14 @@ import '@uniswap/v3-core/contracts/libraries/LowGasSafeMath.sol';
 library UniswapV2Library {
     using LowGasSafeMath for uint256;
 
-    // returns sorted token addresses, used to handle return values from pairs sorted in this order
+    // 返回按地址排序的 token，用于按 pair 内部 token0/token1 顺序解释储备值
     function sortTokens(address tokenA, address tokenB) internal pure returns (address token0, address token1) {
         require(tokenA != tokenB);
         (token0, token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0));
     }
 
-    // calculates the CREATE2 address for a pair without making any external calls
+    // 使用 CREATE2 公式计算 pair 地址，无需执行外部调用
     function pairFor(
         address factory,
         address tokenA,
@@ -28,14 +28,14 @@ library UniswapV2Library {
                         hex'ff',
                         factory,
                         keccak256(abi.encodePacked(token0, token1)),
-                        hex'96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f' // init code hash
+                        hex'96e8ac4277198ff8b6f785478aa9a39f403cb768dd02cbee326c3e7da348845f' // pair 初始化代码哈希
                     )
                 )
             )
         );
     }
 
-    // fetches and sorts the reserves for a pair
+    // 读取 pair 储备，并按调用方传入的 tokenA/tokenB 顺序返回
     function getReserves(
         address factory,
         address tokenA,
@@ -46,7 +46,7 @@ library UniswapV2Library {
         (reserveA, reserveB) = tokenA == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
     }
 
-    // given an input amount of an asset and pair reserves, returns the maximum output amount of the other asset
+    // 根据输入数量和恒定乘积池储备，计算扣除 0.3% 手续费后的最大输出数量
     function getAmountOut(
         uint256 amountIn,
         uint256 reserveIn,
@@ -60,7 +60,7 @@ library UniswapV2Library {
         amountOut = numerator / denominator;
     }
 
-    // given an output amount of an asset and pair reserves, returns a required input amount of the other asset
+    // 根据目标输出数量和池储备，反算满足输出所需的最小输入数量
     function getAmountIn(
         uint256 amountOut,
         uint256 reserveIn,
@@ -73,7 +73,7 @@ library UniswapV2Library {
         amountIn = (numerator / denominator).add(1);
     }
 
-    // performs chained getAmountIn calculations on any number of pairs
+    // 从路径末端向前逐池反算，得到多跳精确输出交换各跳所需的输入数量
     function getAmountsIn(
         address factory,
         uint256 amountOut,

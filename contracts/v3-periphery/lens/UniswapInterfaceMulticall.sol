@@ -2,7 +2,7 @@
 pragma solidity =0.7.6;
 pragma abicoder v2;
 
-/// @notice A fork of Multicall2 specifically tailored for the Uniswap Interface
+/// @notice 专为 Uniswap Interface 定制的 Multicall2 分支。
 contract UniswapInterfaceMulticall {
     struct Call {
         address target;

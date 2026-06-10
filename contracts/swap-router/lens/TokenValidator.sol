@@ -11,20 +11,10 @@ import '../interfaces/ISwapRouter02.sol';
 import '../interfaces/ITokenValidator.sol';
 import '../base/ImmutableState.sol';
 
-/// @notice Validates tokens by flash borrowing from the token/<base token> pool on V2.
-/// @notice Returns
-///     Status.FOT if we detected a fee is taken on transfer.
-///     Status.STF if transfer failed for the token.
-///     Status.UNKN if we did not detect any issues with the token.
-/// @notice A return value of Status.UNKN does not mean the token is definitely not a fee on transfer token
-///     or definitely has no problems with its transfer. It just means we cant say for sure that it has any
-///     issues.
-/// @dev We can not guarantee the result of this lens is correct for a few reasons:
-/// @dev 1/ Some tokens take fees or allow transfers under specific conditions, for example some have an allowlist
-/// @dev    of addresses that do/dont require fees. Therefore the result is not guaranteed to be correct
-/// @dev    in all circumstances.
-/// @dev 2/ It is possible that the token does not have any pools on V2 therefore we are not able to perform
-/// @dev    a flashloan to test the token.
+/// @notice 通过 V2 的 token/baseToken 池子闪借目标 token，粗略判断 token 转账是否会扣费或失败。
+/// @notice 返回 Status.FOT 表示检测到转账扣费，Status.STF 表示 token 转账失败，Status.UNKN 表示无法确认异常。
+/// @dev UNKN 不代表 token 一定安全，只代表这次探测没有发现问题。
+/// 结果不保证完全准确：有些 token 只在特定地址/条件下扣费，也可能根本没有可用 V2 池子来闪借测试。
 contract TokenValidator is ITokenValidator, IUniswapV2Callee, ImmutableState {
     string internal constant FOT_REVERT_STRING = 'FOT';
     // https://github.com/Uniswap/v2-core/blob/1136544ac842ff48ae0b1b939701436598d74075/contracts/UniswapV2Pair.sol#L46
@@ -68,8 +58,7 @@ contract TokenValidator is ITokenValidator, IUniswapV2Callee, ImmutableState {
 
         address pairAddress = UniswapV2Library.pairFor(this.factoryV2(), token, baseToken);
 
-        // If the token/baseToken pair exists, get token0.
-        // Must do low level call as try/catch does not support case where contract does not exist.
+        // 如果 token/baseToken pair 存在，读取 token0；用底层 call 是为了兼容 pair 不存在的情况。
         (, bytes memory returnData) = address(pairAddress).call(abi.encodeWithSelector(IUniswapV2Pair.token0.selector));
 
         if (returnData.length == 0) {
@@ -78,7 +67,7 @@ contract TokenValidator is ITokenValidator, IUniswapV2Callee, ImmutableState {
 
         address token0Address = abi.decode(returnData, (address));
 
-        // Flash loan {amountToBorrow}
+        // 从 V2 pair 闪借 amountToBorrow 个目标 token。
         (uint256 amount0Out, uint256 amount1Out) =
             token == token0Address ? (amountToBorrow, uint256(0)) : (uint256(0), amountToBorrow);
 
@@ -100,7 +89,7 @@ contract TokenValidator is ITokenValidator, IUniswapV2Callee, ImmutableState {
             return Status.UNKN;
         }
 
-        // Swap always reverts so should never reach.
+        // 回调总会主动 revert 返回探测结果，正常情况下不会走到这里。
         revert('Unexpected error');
     }
 
@@ -109,8 +98,7 @@ contract TokenValidator is ITokenValidator, IUniswapV2Callee, ImmutableState {
     }
 
     function isTransferFailed(string memory reason) internal pure returns (bool) {
-        // We check the suffix of the revert string so we can support forks that
-        // may have modified the prefix.
+        // 只检查 revert 字符串后缀，兼容修改过前缀的 V2 fork。
         string memory stf = STF_REVERT_STRING_SUFFIX;
 
         uint256 reasonLength = bytes(reason).length;
@@ -145,15 +133,13 @@ contract TokenValidator is ITokenValidator, IUniswapV2Callee, ImmutableState {
         (uint256 balanceBeforeLoan, uint256 amountRequestedToBorrow) = abi.decode(data, (uint256, uint256));
         uint256 amountBorrowed = tokenBorrowed.balanceOf(address(this)) - balanceBeforeLoan;
 
-        // If we received less token than we requested when we called swap, then a fee must have been taken
-        // by the token during transfer.
+        // 如果实际收到的 token 少于请求闪借数量，说明转账过程中发生了扣费。
         if (amountBorrowed != amountRequestedToBorrow) {
             revert(FOT_REVERT_STRING);
         }
 
-        // Note: If we do not revert here, we would end up reverting in the pair's swap method anyway
-        // since for a flash borrow we need to transfer back the amount we borrowed + 0.3% fee, and we don't
-        // have funds to cover the fee. Revert early here to save gas/time.
+        // 这里无论如何都主动 revert：如果继续执行，pair 也会因为没归还本金+0.3% 手续费而回滚。
+        // 提前回滚可以节省 gas/time，并把“未发现问题”编码为 Unknown。
         revert('Unknown');
     }
 }

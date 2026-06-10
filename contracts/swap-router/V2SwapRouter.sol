@@ -11,13 +11,13 @@ import './base/PeripheryPaymentsWithFeeExtended.sol';
 import './libraries/Constants.sol';
 import './libraries/UniswapV2Library.sol';
 
-/// @title Uniswap V2 Swap Router
-/// @notice Router for stateless execution of swaps against Uniswap V2
+/// @title Uniswap V2 兑换路由
+/// @notice 无状态 V2 兑换路由，负责把输入转入第一个 pair 并逐跳执行 swap。
 abstract contract V2SwapRouter is IV2SwapRouter, ImmutableState, PeripheryPaymentsWithFeeExtended {
     using LowGasSafeMath for uint256;
 
-    // supports fee-on-transfer tokens
-    // requires the initial amount to have already been sent to the first pair
+    // 支持转账扣费 token：每一跳用 pair 实际收到的余额差来计算输出。
+    // 调用前要求第一笔输入已经转到第一个 pair。
     function _swap(address[] memory path, address _to) private {
         for (uint256 i; i < path.length - 1; i++) {
             (address input, address output) = (path[i], path[i + 1]);
@@ -25,7 +25,7 @@ abstract contract V2SwapRouter is IV2SwapRouter, ImmutableState, PeripheryPaymen
             IUniswapV2Pair pair = IUniswapV2Pair(UniswapV2Library.pairFor(factoryV2, input, output));
             uint256 amountInput;
             uint256 amountOutput;
-            // scope to avoid stack too deep errors
+            // 单独作用域避免 stack too deep。
             {
                 (uint256 reserve0, uint256 reserve1, ) = pair.getReserves();
                 (uint256 reserveInput, uint256 reserveOutput) =
@@ -40,14 +40,14 @@ abstract contract V2SwapRouter is IV2SwapRouter, ImmutableState, PeripheryPaymen
         }
     }
 
-    /// @inheritdoc IV2SwapRouter
+    /// @notice V2 精确输入兑换，支持把本合约中某个 token 的全部余额作为输入。
     function swapExactTokensForTokens(
         uint256 amountIn,
         uint256 amountOutMin,
         address[] calldata path,
         address to
     ) external payable override returns (uint256 amountOut) {
-        // use amountIn == Constants.CONTRACT_BALANCE as a flag to swap the entire balance of the contract
+        // amountIn 为 CONTRACT_BALANCE 时，表示使用路由合约当前持有的全部输入 token。
         bool hasAlreadyPaid;
         if (amountIn == Constants.CONTRACT_BALANCE) {
             hasAlreadyPaid = true;
@@ -61,7 +61,7 @@ abstract contract V2SwapRouter is IV2SwapRouter, ImmutableState, PeripheryPaymen
             amountIn
         );
 
-        // find and replace to addresses
+        // 把 to 占位常量替换成实际收款地址。
         if (to == Constants.MSG_SENDER) to = msg.sender;
         else if (to == Constants.ADDRESS_THIS) to = address(this);
 
@@ -73,7 +73,7 @@ abstract contract V2SwapRouter is IV2SwapRouter, ImmutableState, PeripheryPaymen
         require(amountOut >= amountOutMin, 'Too little received');
     }
 
-    /// @inheritdoc IV2SwapRouter
+    /// @notice V2 精确输出兑换，先用储备量反推所需输入，再限制最大输入。
     function swapTokensForExactTokens(
         uint256 amountOut,
         uint256 amountInMax,
@@ -85,7 +85,7 @@ abstract contract V2SwapRouter is IV2SwapRouter, ImmutableState, PeripheryPaymen
 
         pay(path[0], msg.sender, UniswapV2Library.pairFor(factoryV2, path[0], path[1]), amountIn);
 
-        // find and replace to addresses
+        // 把 to 占位常量替换成实际收款地址。
         if (to == Constants.MSG_SENDER) to = msg.sender;
         else if (to == Constants.ADDRESS_THIS) to = address(this);
 

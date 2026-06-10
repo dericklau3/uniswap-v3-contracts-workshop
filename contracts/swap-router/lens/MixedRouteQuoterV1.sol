@@ -18,22 +18,21 @@ import '../interfaces/IMixedRouteQuoterV1.sol';
 import '../libraries/PoolTicksCounter.sol';
 import '../libraries/UniswapV2Library.sol';
 
-/// @title Provides on chain quotes for V3, V2, and MixedRoute exact input swaps
-/// @notice Allows getting the expected amount out for a given swap without executing the swap
-/// @notice Does not support exact output swaps since using the contract balance between exactOut swaps is not supported
-/// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
-/// the swap and check the amounts in the callback.
+/// @title V2/V3 混合路径精确输入报价工具
+/// @notice 在不真正完成 swap 的情况下，模拟 V2、V3 或混合路径的精确输入输出数量。
+/// @notice 不支持精确输出报价，因为 exactOut 多跳需要依赖合约中间余额。
+/// @dev V3 报价依赖回调 revert 携带数据，gas 不低，不应在链上业务路径中调用。
 contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;
     using PoolTicksCounter for IUniswapV3Pool;
     address public immutable factoryV2;
-    /// @dev Value to bit mask with path fee to determine if V2 or V3 route
-    // max V3 fee:           000011110100001001000000 (24 bits)
-    // mask:       1 << 23 = 100000000000000000000000 = decimal value 8388608
+    /// @dev 通过 fee 的最高位标记该跳是 V2 还是 V3。
+    // V3 最大 fee:          000011110100001001000000 (24 bits)
+    // mask:       1 << 23 = 100000000000000000000000 = 十进制 8388608
     uint24 private constant flagBitmask = 8388608;
 
-    /// @dev Transient storage variable used to check a safety condition in exact output swaps.
+    /// @dev 保留字段，混合报价当前只支持 exact input。
     uint256 private amountOutCached;
 
     constructor(
@@ -52,7 +51,7 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
         return IUniswapV3Pool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
     }
 
-    /// @dev Given an amountIn, fetch the reserves of the V2 pair and get the amountOut
+    /// @dev 读取 V2 pair 储备量，并根据恒定乘积公式计算 amountIn 对应的 amountOut。
     function getPairAmountOut(
         uint256 amountIn,
         address tokenIn,
@@ -62,13 +61,13 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
         return UniswapV2Library.getAmountOut(amountIn, reserveIn, reserveOut);
     }
 
-    /// @inheritdoc IUniswapV3SwapCallback
+    /// @notice V3 swap 模拟回调，把报价结果、swap 后价格和 tick 编码进 revert data 返回。
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes memory path
     ) external view override {
-        require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+        require(amount0Delta > 0 || amount1Delta > 0); // 不支持完全发生在零流动性区域内的 swap。
         (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
@@ -89,12 +88,12 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
                 revert(ptr, 0x60)
             }
         } else {
-            /// since we don't support exactOutput, revert here
+            /// 当前合约不支持 exact output 报价，走到这里直接回滚。
             revert('Exact output quote not supported');
         }
     }
 
-    /// @dev Parses a revert reason that should contain the numeric quote
+    /// @dev 解析 V3 回调 revert data；正常报价返回 amount、swap 后 sqrtPrice 和 tick。
     function parseRevertReason(bytes memory reason)
         private
         pure
@@ -138,7 +137,7 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
         return (amount, sqrtPriceX96After, initializedTicksCrossed, gasEstimate);
     }
 
-    /// @dev Fetch an exactIn quote for a V3 Pool on chain
+    /// @dev 查询单个 V3 池子的 exactIn 报价，并返回价格/tick/gas 信息。
     function quoteExactInputSingleV3(QuoteExactInputSingleV3Params memory params)
         public
         override
@@ -155,7 +154,7 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
         uint256 gasBefore = gasleft();
         try
             pool.swap(
-                address(this), // address(0) might cause issues with some tokens
+                address(this), // 某些 token 不兼容 address(0) 作为收款地址。
                 zeroForOne,
                 params.amountIn.toInt256(),
                 params.sqrtPriceLimitX96 == 0
@@ -169,7 +168,7 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
         }
     }
 
-    /// @dev Fetch an exactIn quote for a V2 pair on chain
+    /// @dev 查询单个 V2 pair 的 exactIn 报价。
     function quoteExactInputSingleV2(QuoteExactInputSingleV2Params memory params)
         public
         view
@@ -179,8 +178,8 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
         amountOut = getPairAmountOut(params.amountIn, params.tokenIn, params.tokenOut);
     }
 
-    /// @dev Get the quote for an exactIn swap between an array of V2 and/or V3 pools
-    /// @notice To encode a V2 pair within the path, use 0x800000 (hex value of 8388608) for the fee between the two token addresses
+    /// @dev 查询由 V2/V3 混合组成的 exactIn 路径报价。
+    /// @notice 在 path 中用 0x800000 作为两个 token 之间的 fee，即表示该跳使用 V2 pair。
     function quoteExactInput(bytes memory path, uint256 amountIn)
         public
         override
@@ -203,7 +202,7 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
                     QuoteExactInputSingleV2Params({tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn})
                 );
             } else {
-                /// the outputs of prior swaps become the inputs to subsequent ones
+                /// 前一跳输出成为后一跳输入。
                 (
                     uint256 _amountOut,
                     uint160 _sqrtPriceX96After,
@@ -226,7 +225,7 @@ contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, Peri
             }
             i++;
 
-            /// decide whether to continue or terminate
+            /// 还有下一跳就推进 path，否则返回最终输出和 V3 跳统计。
             if (path.hasMultiplePools()) {
                 path = path.skipToken();
             } else {

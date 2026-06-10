@@ -1,3 +1,6 @@
-@openzeppelin/=node_modules/@openzeppelin/
-@uniswap/=node_modules/@uniswap/
 forge-std/=lib/forge-std/src/
+@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+@uniswap/v3-core/=lib/v3-core/
+@uniswap/v3-periphery/=lib/v3-periphery/
+v3-core/=lib/v3-core/
+v3-periphery/=lib/v3-periphery/

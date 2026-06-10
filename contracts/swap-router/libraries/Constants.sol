@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity =0.7.6;
 
-/// @title Constant state
-/// @notice Constant state used by the swap router
+/// @title 路由器状态常量
+/// @notice 交换路由器用于压缩调用参数和表达特殊地址语义的常量
 library Constants {
-    /// @dev Used for identifying cases when this contract's balance of a token is to be used
+    /// @dev 表示本次操作应使用当前合约持有的全部 token 余额
     uint256 internal constant CONTRACT_BALANCE = 0;
 
-    /// @dev Used as a flag for identifying msg.sender, saves gas by sending more 0 bytes
+    /// @dev msg.sender 的哨兵地址；使用更多零字节可降低 calldata gas
     address internal constant MSG_SENDER = address(1);
 
-    /// @dev Used as a flag for identifying address(this), saves gas by sending more 0 bytes
+    /// @dev address(this) 的哨兵地址；使用更多零字节可降低 calldata gas
     address internal constant ADDRESS_THIS = address(2);
 }

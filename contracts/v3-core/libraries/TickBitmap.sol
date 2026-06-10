@@ -3,14 +3,14 @@ pragma solidity >=0.5.0;
 
 import './BitMath.sol';
 
-/// @title Packed tick initialized state library
-/// @notice Stores a packed mapping of tick index to its initialized state
-/// @dev The mapping uses int16 for keys since ticks are represented as int24 and there are 256 (2^8) values per word.
+/// @title 压缩存储 tick 初始化状态的位图库
+/// @notice 将每个可用 tick 是否已初始化压缩到 uint256 位图中
+/// @dev 每个 word 保存 256 个 tick 标记，因此用 int16 作为 word 键即可覆盖 int24 tick 范围
 library TickBitmap {
-    /// @notice Computes the position in the mapping where the initialized bit for a tick lives
-    /// @param tick The tick for which to compute the position
-    /// @return wordPos The key in the mapping containing the word in which the bit is stored
-    /// @return bitPos The bit position in the word where the flag is stored
+    /// @notice 计算 tick 在位图中的 word 位置和位偏移
+    /// @param tick 已按 tickSpacing 压缩后的 tick
+    /// @return wordPos 保存该标记的映射键
+    /// @return bitPos 标记在 uint256 word 中的位位置
     function position(int24 tick) private pure returns (int16 wordPos, uint8 bitPos) {
         // tick / 256 | tick / 2**8
         // 一个字（word）通常是 256 位（32 字节），通过右移 8 位，可以确定 tick 所在的字的位置。
@@ -19,16 +19,17 @@ library TickBitmap {
         bitPos = uint8(tick % 256);
     }
 
-    /// @notice Flips the initialized state for a given tick from false to true, or vice versa
-    /// @param self The mapping in which to flip the tick
-    /// @param tick The tick to flip
-    /// @param tickSpacing The spacing between usable ticks
+    /// @notice 翻转指定 tick 的初始化状态
+    /// @dev 同一个 tick 首次获得流动性时由 0 变 1，最后一份流动性移除时由 1 变 0
+    /// @param self tick 位图映射
+    /// @param tick 待翻转的原始 tick
+    /// @param tickSpacing 可用 tick 的间距
     function flipTick(
         mapping(int16 => uint256) storage self,
         int24 tick,
         int24 tickSpacing
     ) internal {
-        require(tick % tickSpacing == 0); // ensure that the tick is spaced
+        require(tick % tickSpacing == 0); // 只有 tickSpacing 的整数倍才是可用边界
         (int16 wordPos, uint8 bitPos) = position(tick / tickSpacing);
         // 首次提供的流动性区间
         // 通过 1 << bitPos，将 1 左移 bitPos 位，生成一个只有 bitPos 位置是 1 的掩码，其余位置是 0。
@@ -41,14 +42,14 @@ library TickBitmap {
         self[wordPos] ^= mask;
     }
 
-    /// @notice Returns the next initialized tick contained in the same word (or adjacent word) as the tick that is either
-    /// to the left (less than or equal to) or right (greater than) of the given tick
-    /// @param self The mapping in which to compute the next initialized tick
-    /// @param tick The starting tick
-    /// @param tickSpacing The spacing between usable ticks
-    /// @param lte Whether to search for the next initialized tick to the left (less than or equal to the starting tick)
-    /// @return next The next initialized or uninitialized tick up to 256 ticks away from the current tick
-    /// @return initialized Whether the next tick is initialized, as the function only searches within up to 256 ticks
+    /// @notice 在当前 word 范围内查找左侧或右侧最近的已初始化 tick
+    /// @dev 每次最多检查 256 个压缩 tick；若本 word 没有命中，则返回该 word 的边界并标记 initialized=false
+    /// @param self tick 位图映射
+    /// @param tick 搜索起点
+    /// @param tickSpacing 可用 tick 的间距
+    /// @param lte 是否向左搜索小于或等于起点的最近 tick
+    /// @return next 当前 word 内最近的已初始化 tick，或没有命中时的 word 边界 tick
+    /// @return initialized 返回的 tick 是否确实已初始化
     function nextInitializedTickWithinOneWord(
         mapping(int16 => uint256) storage self,
         int24 tick,
@@ -56,12 +57,12 @@ library TickBitmap {
         bool lte
     ) internal view returns (int24 next, bool initialized) {
         int24 compressed = tick / tickSpacing;
-        if (tick < 0 && tick % tickSpacing != 0) compressed--; // round towards negative infinity
+        if (tick < 0 && tick % tickSpacing != 0) compressed--; // Solidity 除法向零取整，此处修正为向负无穷取整
 
-        // tokenIn < tokenOut
+        // 向左搜索，当前 tick 本身也参与匹配
         if (lte) {
             (int16 wordPos, uint8 bitPos) = position(compressed);
-            // all the 1s at or to the right of the current bitPos
+            // 构造从最低位到 bitPos（含）的全 1 掩码，只保留当前位及其左侧候选
             // currectTick = 81609
             // bitPos = 152,    1 << bitPos = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
             //            (1 << bitPos) - 1 = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
@@ -72,18 +73,18 @@ library TickBitmap {
             // & 运算：如果两位都为1，结果为1；否则结果为0。
             uint256 masked = self[wordPos] & mask;
 
-            // if there are no initialized ticks to the right of or at the current tick, return rightmost in the word
+            // 若没有已初始化 tick，则返回当前 word 最左侧对应的 tick，供交换循环继续搜索前一个 word
             initialized = masked != 0;
-            // overflow/underflow is possible, but prevented externally by limiting both tickSpacing and tick
+            // 理论上可能溢出或下溢，但外部对 tickSpacing 和 tick 的范围限制会阻止这种情况
             // BitMath.mostSignificantBit(masked) = tickLower 78200 / 200 % 256
             // (compressed - int24(bitPos - BitMath.mostSignificantBit(masked))) * tickSpacing = tickLower
             next = initialized
                 ? (compressed - int24(bitPos - BitMath.mostSignificantBit(masked))) * tickSpacing
                 : (compressed - int24(bitPos)) * tickSpacing;
         } else {
-            // start from the word of the next tick, since the current tick state doesn't matter
+            // 向右搜索必须从下一个压缩 tick 开始，因为要求结果严格大于当前 tick
             (int16 wordPos, uint8 bitPos) = position(compressed + 1);
-            // all the 1s at or to the left of the bitPos
+            // 构造从 bitPos 到最高位的全 1 掩码，只保留当前位及其右侧候选
             // currectTick = 81607
             // bitPos = 153, (1 << bitPos) - 1 = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
             //                            mask = "1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
@@ -94,9 +95,9 @@ library TickBitmap {
             // & 运算：如果两位都为1，结果为1；否则结果为0。
             uint256 masked = self[wordPos] & mask;
 
-            // if there are no initialized ticks to the left of the current tick, return leftmost in the word
+            // 若没有已初始化 tick，则返回当前 word 最右侧对应的 tick，供交换循环继续搜索下一个 word
             initialized = masked != 0;
-            // overflow/underflow is possible, but prevented externally by limiting both tickSpacing and tick
+            // 理论上可能溢出或下溢，但外部对 tickSpacing 和 tick 的范围限制会阻止这种情况
             // BitMath.leastSignificantBit(masked) = tickUpper 84200 / 200 % 256
             // (compressed + 1 - int24(BitMath.leastSignificantBit(masked) - bitPos)) * tickSpacing = tickLower
             next = initialized

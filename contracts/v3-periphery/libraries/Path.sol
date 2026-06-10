@@ -3,42 +3,42 @@ pragma solidity >=0.6.0;
 
 import './BytesLib.sol';
 
-/// @title Functions for manipulating path data for multihop swaps
+/// @title 多跳交换路径数据处理函数
 library Path {
     using BytesLib for bytes;
 
-    /// @dev The length of the bytes encoded address
+    /// @dev bytes 编码地址的长度
     uint256 private constant ADDR_SIZE = 20;
-    /// @dev The length of the bytes encoded fee
+    /// @dev bytes 编码费率的长度
     uint256 private constant FEE_SIZE = 3;
 
-    /// @dev The offset of a single token address and pool fee
+    /// @dev 一个 token 地址与紧随其后的池费率所占长度
     uint256 private constant NEXT_OFFSET = ADDR_SIZE + FEE_SIZE;
-    /// @dev The offset of an encoded pool key
+    /// @dev 单个池段 tokenA + fee + tokenB 的编码长度
     uint256 private constant POP_OFFSET = NEXT_OFFSET + ADDR_SIZE;
-    /// @dev The minimum length of an encoding that contains 2 or more pools
+    /// @dev 包含至少两个池的路径最小编码长度
     uint256 private constant MULTIPLE_POOLS_MIN_LENGTH = POP_OFFSET + NEXT_OFFSET;
 
-    /// @notice Returns true iff the path contains two or more pools
-    /// @param path The encoded swap path
-    /// @return True if path contains two or more pools, otherwise false
+    /// @notice 判断路径是否包含两个或更多池
+    /// @param path 编码后的交换路径
+    /// @return 包含两个或更多池时为 true，否则为 false
     function hasMultiplePools(bytes memory path) internal pure returns (bool) {
         return path.length >= MULTIPLE_POOLS_MIN_LENGTH;
     }
 
-    /// @notice Returns the number of pools in the path
-    /// @param path The encoded swap path
-    /// @return The number of pools in the path
+    /// @notice 返回路径中的池数量
+    /// @param path 编码后的交换路径
+    /// @return 路径中的池数量
     function numPools(bytes memory path) internal pure returns (uint256) {
-        // Ignore the first token address. From then on every fee and token offset indicates a pool.
+        // 忽略第一个 token 地址，之后每组 fee + token 地址代表一个池
         return ((path.length - ADDR_SIZE) / NEXT_OFFSET);
     }
 
-    /// @notice Decodes the first pool in path
-    /// @param path The bytes encoded swap path
-    /// @return tokenA The first token of the given pool
-    /// @return tokenB The second token of the given pool
-    /// @return fee The fee level of the pool
+    /// @notice 解码路径中的第一个池
+    /// @param path bytes 编码的交换路径
+    /// @return tokenA 该池的第一个 token
+    /// @return tokenB 该池的第二个 token
+    /// @return fee 该池的费率等级
     function decodeFirstPool(bytes memory path)
         internal
         pure
@@ -53,16 +53,16 @@ library Path {
         tokenB = path.toAddress(NEXT_OFFSET);
     }
 
-    /// @notice Gets the segment corresponding to the first pool in the path
-    /// @param path The bytes encoded swap path
-    /// @return The segment containing all data necessary to target the first pool in the path
+    /// @notice 获取路径中第一个池对应的编码片段
+    /// @param path bytes 编码的交换路径
+    /// @return 定位第一个池所需的 tokenA、fee 和 tokenB 数据
     function getFirstPool(bytes memory path) internal pure returns (bytes memory) {
         return path.slice(0, POP_OFFSET);
     }
 
-    /// @notice Skips a token + fee element from the buffer and returns the remainder
-    /// @param path The swap path
-    /// @return The remaining token + fee elements in the path
+    /// @notice 跳过第一个 token + fee，返回从下一个 token 开始的剩余路径
+    /// @param path 交换路径
+    /// @return 剩余的 token 和 fee 编码
     function skipToken(bytes memory path) internal pure returns (bytes memory) {
         return path.slice(NEXT_OFFSET, path.length - NEXT_OFFSET);
     }

@@ -13,7 +13,8 @@ import '../libraries/TransferHelper.sol';
 abstract contract PeripheryPaymentsWithFee is PeripheryPayments, IPeripheryPaymentsWithFee {
     using LowGasSafeMath for uint256;
 
-    /// @inheritdoc IPeripheryPaymentsWithFee
+    /// @notice 解包本合约持有的 WETH9，并从最终 ETH 中抽取一笔 bips 计价的费用。
+    /// @dev feeBips 最大 100，即最多 1%；常用于路由或前端在 multicall 末尾收取服务费。
     function unwrapWETH9WithFee(
         uint256 amountMinimum,
         address recipient,
@@ -33,7 +34,8 @@ abstract contract PeripheryPaymentsWithFee is PeripheryPayments, IPeripheryPayme
         }
     }
 
-    /// @inheritdoc IPeripheryPaymentsWithFee
+    /// @notice 扫出本合约持有的 ERC20，并从最终 token 中抽取一笔 bips 计价的费用。
+    /// @dev feeBips 最大 100，即最多 1%；amountMinimum 用于保护本合约余额符合预期。
     function sweepTokenWithFee(
         address token,
         uint256 amountMinimum,

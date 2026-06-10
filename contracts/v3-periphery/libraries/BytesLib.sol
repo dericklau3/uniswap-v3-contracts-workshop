@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * @title Solidity Bytes Arrays Utils
+ * @title Solidity bytes 数组工具
  * @author Gonçalo Sá <goncalo.sa@consensys.net>
  *
- * @dev Bytes tightly packed arrays utility library for ethereum contracts written in Solidity.
- *      The library lets you concatenate, slice and type cast bytes arrays both in memory and storage.
+ * @dev 面向 Solidity 以太坊合约的紧凑 bytes 数组工具库。
+ *      支持对内存和存储中的 bytes 数组执行拼接、切片和类型转换。
  */
 pragma solidity >=0.5.0 <0.8.0;
 
@@ -23,30 +23,22 @@ library BytesLib {
         assembly {
             switch iszero(_length)
                 case 0 {
-                    // Get a location of some free memory and store it in tempBytes as
-                    // Solidity does for memory variables.
+                    // 获取空闲内存位置，并按照 Solidity 创建内存变量的方式赋给 tempBytes
                     tempBytes := mload(0x40)
 
-                    // The first word of the slice result is potentially a partial
-                    // word read from the original array. To read it, we calculate
-                    // the length of that partial word and start copying that many
-                    // bytes into the array. The first word we copy will start with
-                    // data we don't care about, but the last `lengthmod` bytes will
-                    // land at the beginning of the contents of the new array. When
-                    // we're done copying, we overwrite the full first word with
-                    // the actual length of the slice.
+                    // 切片结果的第一个 word 可能来自原数组中的非对齐部分。
+                    // 先计算该部分长度，再从对应偏移开始按 32 字节复制。
+                    // 首次复制的高位可能包含无关数据，但末尾 lengthmod 字节会准确落到新数组内容起点。
+                    // 复制完成后，再用切片真实长度覆盖新数组的第一个完整 word
                     let lengthmod := and(_length, 31)
 
-                    // The multiplication in the next line is necessary
-                    // because when slicing multiples of 32 bytes (lengthmod == 0)
-                    // the following copy loop was copying the origin's length
-                    // and then ending prematurely not copying everything it should.
+                    // 下一行乘法用于处理长度恰好为 32 字节倍数的情况。
+                    // 若 lengthmod == 0 而不修正，复制循环会误把原数组长度当作数据复制并提前结束
                     let mc := add(add(tempBytes, lengthmod), mul(0x20, iszero(lengthmod)))
                     let end := add(mc, _length)
 
                     for {
-                        // The multiplication in the next line has the same exact purpose
-                        // as the one above.
+                        // 下一行乘法与上面的修正用途相同
                         let cc := add(add(add(_bytes, lengthmod), mul(0x20, iszero(lengthmod))), _start)
                     } lt(mc, end) {
                         mc := add(mc, 0x20)
@@ -57,15 +49,13 @@ library BytesLib {
 
                     mstore(tempBytes, _length)
 
-                    //update free-memory pointer
-                    //allocating the array padded to 32 bytes like the compiler does now
+                    // 更新空闲内存指针，并像编译器一样把数组分配长度向上补齐到 32 字节
                     mstore(0x40, and(add(mc, 31), not(31)))
                 }
-                //if we want a zero-length slice let's just return a zero-length array
+                // 请求零长度切片时直接返回空 bytes 数组
                 default {
                     tempBytes := mload(0x40)
-                    //zero out the 32 bytes slice we are about to return
-                    //we need to do it because Solidity does not garbage collect
+                    // 将即将返回的 32 字节内存清零，因为 Solidity 不会自动回收和清理旧内存
                     mstore(tempBytes, 0)
 
                     mstore(0x40, add(tempBytes, 0x20))

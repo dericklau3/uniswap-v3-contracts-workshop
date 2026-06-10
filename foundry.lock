@@ -4,5 +4,23 @@
       "name": "v1.13.0",
       "rev": "c29afdd40a82db50a3d3709d324416be50050e5e"
     }
+  },
+  "lib/openzeppelin-contracts": {
+    "tag": {
+      "name": "v5.5.0",
+      "rev": "fcbae5394ae8ad52d8e580a3477db99814b9d565"
+    }
+  },
+  "lib/v3-core": {
+    "branch": {
+      "name": "0.8",
+      "rev": "6562c52e8f75f0c10f9deaf44861847585fc8129"
+    }
+  },
+  "lib/v3-periphery": {
+    "branch": {
+      "name": "0.8",
+      "rev": "b325bb0905d922ae61fcc7df85ee802e8df5e96c"
+    }
   }
 }

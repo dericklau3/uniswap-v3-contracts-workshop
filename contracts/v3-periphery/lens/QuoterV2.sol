@@ -15,16 +15,15 @@ import '../libraries/PoolAddress.sol';
 import '../libraries/CallbackValidation.sol';
 import '../libraries/PoolTicksCounter.sol';
 
-/// @title Provides quotes for swaps
-/// @notice Allows getting the expected amount out or amount in for a given swap without executing the swap
-/// @dev These functions are not gas efficient and should _not_ be called on chain. Instead, optimistically execute
-/// the swap and check the amounts in the callback.
+/// @title Swap 报价工具 V2
+/// @notice 模拟 swap 报价，并额外返回 swap 后价格、跨过的初始化 tick 数和 gas 估算。
+/// @dev 依赖“回调中 revert 并携带报价数据”的技巧，gas 不低，不应在链上业务路径中调用。
 contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;
     using PoolTicksCounter for IUniswapV3Pool;
 
-    /// @dev Transient storage variable used to check a safety condition in exact output swaps.
+    /// @dev exact output 报价时缓存目标输出数量，用于在回调里确认池子给足输出。
     uint256 private amountOutCached;
 
     constructor(address _factory, address _WETH9) PeripheryImmutableState(_factory, _WETH9) {}
@@ -37,13 +36,13 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
         return IUniswapV3Pool(PoolAddress.computeAddress(factory, PoolAddress.getPoolKey(tokenA, tokenB, fee)));
     }
 
-    /// @inheritdoc IUniswapV3SwapCallback
+    /// @notice V3 swap 模拟回调，把报价结果、swap 后价格和 tick 编码进 revert data 返回。
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes memory path
     ) external view override {
-        require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+        require(amount0Delta > 0 || amount1Delta > 0); // 不支持完全发生在零流动性区域内的 swap。
         (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
 
@@ -64,7 +63,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
                 revert(ptr, 96)
             }
         } else {
-            // if the cache has been populated, ensure that the full output amount has been received
+            // 如果缓存了目标输出，必须确认模拟 swap 完整收到该输出数量。
             if (amountOutCached != 0) require(amountReceived == amountOutCached);
             assembly {
                 let ptr := mload(0x40)
@@ -76,7 +75,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
         }
     }
 
-    /// @dev Parses a revert reason that should contain the numeric quote
+    /// @dev 解析回调 revert data；正常报价返回 amount、swap 后 sqrtPrice 和 tick。
     function parseRevertReason(bytes memory reason)
         private
         pure
@@ -136,7 +135,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
         uint256 gasBefore = gasleft();
         try
             pool.swap(
-                address(this), // address(0) might cause issues with some tokens
+                address(this), // 某些 token 不兼容 address(0) 作为收款地址。
                 zeroForOne,
                 params.amountIn.toInt256(),
                 params.sqrtPriceLimitX96 == 0
@@ -167,7 +166,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
         while (true) {
             (address tokenIn, address tokenOut, uint24 fee) = path.decodeFirstPool();
 
-            // the outputs of prior swaps become the inputs to subsequent ones
+            // 前一跳输出成为后一跳输入，同时记录每跳 swap 后价格和跨 tick 数。
             (uint256 _amountOut, uint160 _sqrtPriceX96After, uint32 _initializedTicksCrossed, uint256 _gasEstimate) =
                 quoteExactInputSingle(
                     QuoteExactInputSingleParams({
@@ -185,7 +184,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
             gasEstimate += _gasEstimate;
             i++;
 
-            // decide whether to continue or terminate
+            // 还有下一跳就推进 path，否则返回最终输出和各跳统计。
             if (path.hasMultiplePools()) {
                 path = path.skipToken();
             } else {
@@ -207,12 +206,12 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
         bool zeroForOne = params.tokenIn < params.tokenOut;
         IUniswapV3Pool pool = getPool(params.tokenIn, params.tokenOut, params.fee);
 
-        // if no price limit has been specified, cache the output amount for comparison in the swap callback
+        // 未指定价格限制时，缓存目标输出，回调里会校验必须完整收到。
         if (params.sqrtPriceLimitX96 == 0) amountOutCached = params.amount;
         uint256 gasBefore = gasleft();
         try
             pool.swap(
-                address(this), // address(0) might cause issues with some tokens
+                address(this), // 某些 token 不兼容 address(0) 作为收款地址。
                 zeroForOne,
                 -params.amount.toInt256(),
                 params.sqrtPriceLimitX96 == 0
@@ -222,7 +221,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
             )
         {} catch (bytes memory reason) {
             gasEstimate = gasBefore - gasleft();
-            if (params.sqrtPriceLimitX96 == 0) delete amountOutCached; // clear cache
+            if (params.sqrtPriceLimitX96 == 0) delete amountOutCached; // 清理缓存。
             return handleRevert(reason, pool, gasEstimate);
         }
     }
@@ -244,7 +243,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
         while (true) {
             (address tokenOut, address tokenIn, uint24 fee) = path.decodeFirstPool();
 
-            // the inputs of prior swaps become the outputs of subsequent ones
+            // 精确输出按反向路径报价：后一跳所需输入会成为前一跳目标输出。
             (uint256 _amountIn, uint160 _sqrtPriceX96After, uint32 _initializedTicksCrossed, uint256 _gasEstimate) =
                 quoteExactOutputSingle(
                     QuoteExactOutputSingleParams({
@@ -262,7 +261,7 @@ contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState 
             gasEstimate += _gasEstimate;
             i++;
 
-            // decide whether to continue or terminate
+            // 还有上一跳就推进 path，否则返回最终所需输入和各跳统计。
             if (path.hasMultiplePools()) {
                 path = path.skipToken();
             } else {

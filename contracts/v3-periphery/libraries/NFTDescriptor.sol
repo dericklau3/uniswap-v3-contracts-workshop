@@ -187,21 +187,21 @@ library NFTDescriptor {
     }
 
     struct DecimalStringParams {
-        // significant figures of decimal
+        // 十进制数的有效数字
         uint256 sigfigs;
-        // length of decimal string
+        // 十进制字符串总长度
         uint8 bufferLength;
-        // ending index for significant figures (funtion works backwards when copying sigfigs)
+        // 有效数字的结束索引，后续复制会从后向前进行
         uint8 sigfigIndex;
-        // index of decimal place (0 if no decimal)
+        // 小数点索引；不需要小数点时为 0
         uint8 decimalIndex;
-        // start index for trailing/leading 0's for very small/large numbers
+        // 极小或极大数值中前导/尾随 0 的起始索引
         uint8 zerosStartIndex;
-        // end index for trailing/leading 0's for very small/large numbers
+        // 极小或极大数值中前导/尾随 0 的结束索引
         uint8 zerosEndIndex;
-        // true if decimal number is less than one
+        // 十进制数是否小于 1
         bool isLessThanOne;
-        // true if string should include "%"
+        // 字符串是否需要包含百分号
         bool isPercent;
     }
 
@@ -215,11 +215,11 @@ library NFTDescriptor {
             buffer[1] = '.';
         }
 
-        // add leading/trailing 0's
+        // 写入前导或尾随的 0
         for (uint256 zerosCursor = params.zerosStartIndex; zerosCursor < params.zerosEndIndex.add(1); zerosCursor++) {
             buffer[zerosCursor] = bytes1(uint8(48));
         }
-        // add sigfigs
+        // 写入有效数字
         while (params.sigfigs > 0) {
             if (params.decimalIndex > 0 && params.sigfigIndex == params.decimalIndex) {
                 buffer[params.sigfigIndex--] = '.';
@@ -260,7 +260,7 @@ library NFTDescriptor {
         if (roundUp) {
             value = value + 1;
         }
-        // 99999 -> 100000 gives an extra sigfig
+        // 99999 舍入为 100000 时会额外产生一位有效数字
         if (value == 100000) {
             value /= 10;
             extraDigit = true;
@@ -295,8 +295,8 @@ library NFTDescriptor {
         return uint256(x >= 0 ? x : -x);
     }
 
-    // @notice Returns string that includes first 5 significant figures of a decimal number
-    // @param sqrtRatioX96 a sqrt price
+    // @notice 将平方根价格格式化为包含前 5 位有效数字的十进制字符串
+    // @param sqrtRatioX96 Q64.96 平方根价格
     function fixedPointToDecimalString(
         uint160 sqrtRatioX96,
         uint8 baseTokenDecimals,
@@ -307,24 +307,24 @@ library NFTDescriptor {
 
         bool priceBelow1 = adjustedSqrtRatioX96 < 2**96;
         if (priceBelow1) {
-            // 10 ** 43 is precision needed to retreive 5 sigfigs of smallest possible price + 1 for rounding
+            // 10 ** 43 可为最小可能价格保留 5 位有效数字，并额外保留 1 位用于舍入
             value = FullMath.mulDiv(value, 10**44, 1 << 128);
         } else {
-            // leave precision for 4 decimal places + 1 place for rounding
+            // 保留 4 位小数精度，并额外保留 1 位用于舍入
             value = FullMath.mulDiv(value, 10**5, 1 << 128);
         }
 
-        // get digit count
+        // 计算整数数字位数
         uint256 temp = value;
         uint8 digits;
         while (temp != 0) {
             digits++;
             temp /= 10;
         }
-        // don't count extra digit kept for rounding
+        // 不计入为舍入而额外保留的最后一位
         digits = digits - 1;
 
-        // address rounding
+        // 根据额外保留位执行四舍五入
         (uint256 sigfigs, bool extraDigit) = sigfigsRounded(value, digits);
         if (extraDigit) {
             digits++;
@@ -332,19 +332,19 @@ library NFTDescriptor {
 
         DecimalStringParams memory params;
         if (priceBelow1) {
-            // 7 bytes ( "0." and 5 sigfigs) + leading 0's bytes
+            // 7 字节（"0." 加 5 位有效数字）再加前导 0 所需字节
             params.bufferLength = uint8(uint8(7).add(uint8(43).sub(digits)));
             params.zerosStartIndex = 2;
             params.zerosEndIndex = uint8(uint256(43).sub(digits).add(1));
             params.sigfigIndex = uint8(params.bufferLength.sub(1));
         } else if (digits >= 9) {
-            // no decimal in price string
+            // 价格字符串中不需要小数点
             params.bufferLength = uint8(digits.sub(4));
             params.zerosStartIndex = 5;
             params.zerosEndIndex = uint8(params.bufferLength.sub(1));
             params.sigfigIndex = 4;
         } else {
-            // 5 sigfigs surround decimal
+            // 5 位有效数字分布在小数点两侧
             params.bufferLength = 6;
             params.sigfigIndex = 5;
             params.decimalIndex = uint8(digits.sub(5).add(1));
@@ -356,8 +356,8 @@ library NFTDescriptor {
         return generateDecimalString(params);
     }
 
-    // @notice Returns string as decimal percentage of fee amount.
-    // @param fee fee amount
+    // @notice 将池费率格式化为十进制百分比字符串
+    // @param fee 以百万分之一为单位的池费率
     function feeToPercentString(uint24 fee) internal pure returns (string memory) {
         if (fee == 0) {
             return '0%';
@@ -367,7 +367,7 @@ library NFTDescriptor {
         uint8 numSigfigs;
         while (temp != 0) {
             if (numSigfigs > 0) {
-                // count all digits preceding least significant figure
+                // 统计最低有效位之前的全部数字
                 numSigfigs++;
             } else if (temp % 10 != 0) {
                 numSigfigs++;
@@ -379,7 +379,7 @@ library NFTDescriptor {
         DecimalStringParams memory params;
         uint256 nZeros;
         if (digits >= 5) {
-            // if decimal > 1 (5th digit is the ones place)
+            // 百分比大于 1 时，第 5 位是个位
             uint256 decimalPlace = digits.sub(numSigfigs) >= 4 ? 0 : 1;
             nZeros = digits.sub(5) < (numSigfigs.sub(1)) ? 0 : digits.sub(5).sub(numSigfigs.sub(1));
             params.zerosStartIndex = numSigfigs;
@@ -387,7 +387,7 @@ library NFTDescriptor {
             params.sigfigIndex = uint8(params.zerosStartIndex.sub(1).add(decimalPlace));
             params.bufferLength = uint8(nZeros.add(numSigfigs.add(1)).add(decimalPlace));
         } else {
-            // else if decimal < 1
+            // 百分比小于 1 时，需要补充小数点后的前导 0
             nZeros = uint256(5).sub(digits);
             params.zerosStartIndex = 2;
             params.zerosEndIndex = uint8(nZeros.add(params.zerosStartIndex).sub(1));

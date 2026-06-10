@@ -16,7 +16,8 @@ import './base/SelfPermit.sol';
 import './interfaces/external/IWETH9.sol';
 import './base/PoolInitializer.sol';
 
-/// @title Uniswap V3 Migrator
+/// @title Uniswap V3 迁移器
+/// @notice 将用户的 V2 LP 份额烧掉后，把得到的 token 按比例迁移成 V3 仓位 NFT。
 contract V3Migrator is IV3Migrator, PeripheryImmutableState, PoolInitializer, Multicall, SelfPermit {
     using LowGasSafeMath for uint256;
 
@@ -38,19 +39,19 @@ contract V3Migrator is IV3Migrator, PeripheryImmutableState, PoolInitializer, Mu
         require(params.percentageToMigrate > 0, 'Percentage too small');
         require(params.percentageToMigrate <= 100, 'Percentage too large');
 
-        // burn v2 liquidity to this address
+        // 把用户的 V2 LP 转到 pair 并 burn，底层 token 会回到本合约。
         IUniswapV2Pair(params.pair).transferFrom(msg.sender, params.pair, params.liquidityToMigrate);
         (uint256 amount0V2, uint256 amount1V2) = IUniswapV2Pair(params.pair).burn(address(this));
 
-        // calculate the amounts to migrate to v3
+        // 按用户指定比例计算真正迁移到 V3 的 token 数量。
         uint256 amount0V2ToMigrate = amount0V2.mul(params.percentageToMigrate) / 100;
         uint256 amount1V2ToMigrate = amount1V2.mul(params.percentageToMigrate) / 100;
 
-        // approve the position manager up to the maximum token amounts
+        // 授权 position manager 使用准备迁移的 token。
         TransferHelper.safeApprove(params.token0, nonfungiblePositionManager, amount0V2ToMigrate);
         TransferHelper.safeApprove(params.token1, nonfungiblePositionManager, amount1V2ToMigrate);
 
-        // mint v3 position
+        // 在指定 V3 池子和 tick 区间内铸造新仓位 NFT。
         (, , uint256 amount0V3, uint256 amount1V3) =
             INonfungiblePositionManager(nonfungiblePositionManager).mint(
                 INonfungiblePositionManager.MintParams({
@@ -68,7 +69,7 @@ contract V3Migrator is IV3Migrator, PeripheryImmutableState, PoolInitializer, Mu
                 })
             );
 
-        // if necessary, clear allowance and refund dust
+        // 如果 V3 mint 没用完 V2 赎回的 token，清理授权并把剩余 token 退还给用户。
         if (amount0V3 < amount0V2) {
             if (amount0V3 < amount0V2ToMigrate) {
                 TransferHelper.safeApprove(params.token0, nonfungiblePositionManager, 0);

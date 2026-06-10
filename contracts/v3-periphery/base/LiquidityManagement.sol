@@ -14,15 +14,16 @@ import './PeripheryPayments.sol';
 import './PeripheryImmutableState.sol';
 
 
-/// @title Liquidity management functions
-/// @notice Internal functions for safely managing liquidity in Uniswap V3
+/// @title 流动性管理函数
+/// @notice 给外围合约提供安全添加 V3 流动性的内部函数和 mint 回调付款逻辑。
 abstract contract LiquidityManagement is IUniswapV3MintCallback, PeripheryImmutableState, PeripheryPayments {
     struct MintCallbackData {
         PoolAddress.PoolKey poolKey;
         address payer;
     }
 
-    /// @inheritdoc IUniswapV3MintCallback
+    /// @notice V3 池子 mint 后回调外围合约，外围合约在这里替 LP 支付应付的 token0/token1。
+    /// @dev 先校验 msg.sender 确实是工厂派生出的目标池子，避免伪造回调骗取付款。
     function uniswapV3MintCallback(
         uint256 amount0Owed,
         uint256 amount1Owed,
@@ -31,8 +32,7 @@ abstract contract LiquidityManagement is IUniswapV3MintCallback, PeripheryImmuta
         MintCallbackData memory decoded = abi.decode(data, (MintCallbackData));
         CallbackValidation.verifyCallback(factory, decoded.poolKey);
 
-        // decoded.payer = 流动性提供者
-        // msg.sender = UniswapV3Pool
+        // decoded.payer 是实际出资人，msg.sender 是正在 mint 的 UniswapV3Pool。
         if (amount0Owed > 0) pay(decoded.poolKey.token0, decoded.payer, msg.sender, amount0Owed);
         if (amount1Owed > 0) pay(decoded.poolKey.token1, decoded.payer, msg.sender, amount1Owed);
     }
@@ -50,7 +50,9 @@ abstract contract LiquidityManagement is IUniswapV3MintCallback, PeripheryImmuta
         uint256 amount1Min;
     }
 
-    /// @notice Add liquidity to an initialized pool
+    /// @notice 给已初始化池子添加流动性。
+    /// @dev 先用当前池子价格把用户期望投入的 token0/token1 换算成最大可铸造流动性，
+    /// 再调用 pool.mint，由 mint 回调完成实际付款，并用 amount0Min/amount1Min 做滑点保护。
     function addLiquidity(AddLiquidityParams memory params)
         internal
         returns (
@@ -65,7 +67,7 @@ abstract contract LiquidityManagement is IUniswapV3MintCallback, PeripheryImmuta
 
         pool = IUniswapV3Pool(PoolAddress.computeAddress(factory, poolKey));
 
-        // compute the liquidity amount
+        // 根据当前价格、仓位区间和用户期望投入数量计算可铸造流动性。
         {
             (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
             uint160 sqrtRatioAX96 = TickMath.getSqrtRatioAtTick(params.tickLower);

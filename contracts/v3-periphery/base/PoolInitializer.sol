@@ -7,9 +7,10 @@ import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import './PeripheryImmutableState.sol';
 import '../interfaces/IPoolInitializer.sol';
 
-/// @title Creates and initializes V3 Pools
+/// @title 创建并初始化 V3 池子
 abstract contract PoolInitializer is IPoolInitializer, PeripheryImmutableState {
-    /// @inheritdoc IPoolInitializer
+    /// @notice 如果池子不存在则创建；如果池子尚未初始化则用给定价格初始化。
+    /// @dev token0 必须小于 token1；已存在且已初始化的池子会直接返回地址。
     function createAndInitializePoolIfNecessary(
         address token0,
         address token1,

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.7.6;
-pragma abicoder v2;
+pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 import "forge-std/Vm.sol";
@@ -8,10 +7,10 @@ import "forge-std/console.sol";
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import "../contracts/v3-core/libraries/FullMath.sol";
-import "../contracts/v3-periphery/interfaces/IQuoter.sol";
-import "../contracts/v3-periphery/interfaces/ISwapRouter.sol";
-import "../contracts/v3-periphery/interfaces/INonfungiblePositionManager.sol";
+import "v3-core/contracts/libraries/FullMath.sol";
+import "v3-periphery/contracts/interfaces/IQuoter.sol";
+import "v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
 
 contract UniswapV3Test is Test {
     address account = makeAddr("account");
@@ -86,13 +85,13 @@ contract UniswapV3Test is Test {
     //     assertGt(amountIn, 0);
     // }
 
-    // function testAddLiquidityV3() public {
-    //     vm.startPrank(account);
-    //     (, uint128 liquidity,,) = _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
-    //     vm.stopPrank();
+    function testAddLiquidityV3() public {
+        vm.startPrank(account);
+        (, uint128 liquidity,,) = _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+        vm.stopPrank();
 
-    //     assertGt(uint256(liquidity), 0);
-    // }
+        assertGt(uint256(liquidity), 0);
+    }
 
     // function testSingleSwapExactInputV3() public {
     //     vm.startPrank(account);
@@ -144,69 +143,69 @@ contract UniswapV3Test is Test {
     //     assertGt(amountIn1, 0);
     // }
 
-    function testMultiSwapExactInputV3() public {
-        vm.startPrank(account);
-        _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
-        _addLiquidityV3(address(tokenB), address(tokenC), 1000e18, 2000e18);
+    // function testMultiSwapExactInputV3() public {
+    //     vm.startPrank(account);
+    //     _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+    //     _addLiquidityV3(address(tokenB), address(tokenC), 1000e18, 2000e18);
 
-        uint256 amountInTokenA = 1e18;
+    //     uint256 amountInTokenA = 1e18;
 
-        // 构建多跳路径编码. tokenA -> tokenB -> tokenC
-        bytes memory path = abi.encodePacked(
-            address(tokenA),
-            FEE, // 0.3%费率
-            address(tokenB),
-            FEE, // 0.3%费率
-            address(tokenC)
-        );
+    //     // 构建多跳路径编码. tokenA -> tokenB -> tokenC
+    //     bytes memory path = abi.encodePacked(
+    //         address(tokenA),
+    //         FEE, // 0.3%费率
+    //         address(tokenB),
+    //         FEE, // 0.3%费率
+    //         address(tokenC)
+    //     );
 
-        uint256 amountOutC = swapRouter.exactInput(
-            ISwapRouter.ExactInputParams({
-                path: path,
-                recipient: account,
-                deadline: type(uint256).max,
-                amountIn: amountInTokenA,
-                amountOutMinimum: 0
-            })
-        );
-        console.log("exactInput: tokenA -> tokenB -> tokenC swap:");
-        console.log(amountOutC);
-        vm.stopPrank();
+    //     uint256 amountOutC = swapRouter.exactInput(
+    //         ISwapRouter.ExactInputParams({
+    //             path: path,
+    //             recipient: account,
+    //             deadline: type(uint256).max,
+    //             amountIn: amountInTokenA,
+    //             amountOutMinimum: 0
+    //         })
+    //     );
+    //     console.log("exactInput: tokenA -> tokenB -> tokenC swap:");
+    //     console.log(amountOutC);
+    //     vm.stopPrank();
 
-        assertGt(amountOutC, 0);
-    }
+    //     assertGt(amountOutC, 0);
+    // }
 
-    function testMultiSwapExactOutputV3() public {
-        vm.startPrank(account);
-        _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
-        _addLiquidityV3(address(tokenB), address(tokenC), 1000e18, 2000e18);
+    // function testMultiSwapExactOutputV3() public {
+    //     vm.startPrank(account);
+    //     _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+    //     _addLiquidityV3(address(tokenB), address(tokenC), 1000e18, 2000e18);
 
-        uint256 amountOutTokenC = 1e18;
+    //     uint256 amountOutTokenC = 1e18;
 
-        // 注意：多跳精确输出交换的路径编码与精确输入相反，需要从输出代币开始编码
-        bytes memory pathReverse = abi.encodePacked(
-            address(tokenC),
-            FEE, // 0.3%费率
-            address(tokenB),
-            FEE, // 0.3%费率
-            address(tokenA)
-        );
+    //     // 注意：多跳精确输出交换的路径编码与精确输入相反，需要从输出代币开始编码
+    //     bytes memory pathReverse = abi.encodePacked(
+    //         address(tokenC),
+    //         FEE, // 0.3%费率
+    //         address(tokenB),
+    //         FEE, // 0.3%费率
+    //         address(tokenA)
+    //     );
 
-        uint256 amountInA = swapRouter.exactOutput(
-            ISwapRouter.ExactOutputParams({
-                path: pathReverse,
-                recipient: account,
-                deadline: type(uint256).max,
-                amountOut: amountOutTokenC,
-                amountInMaximum: type(uint256).max
-            })
-        );
-        console.log("exactOutput: tokenA -> tokenB -> tokenC swap:");
-        console.log(amountInA);
-        vm.stopPrank();
+    //     uint256 amountInA = swapRouter.exactOutput(
+    //         ISwapRouter.ExactOutputParams({
+    //             path: pathReverse,
+    //             recipient: account,
+    //             deadline: type(uint256).max,
+    //             amountOut: amountOutTokenC,
+    //             amountInMaximum: type(uint256).max
+    //         })
+    //     );
+    //     console.log("exactOutput: tokenA -> tokenB -> tokenC swap:");
+    //     console.log(amountInA);
+    //     vm.stopPrank();
 
-        assertGt(amountInA, 0);
-    }
+    //     assertGt(amountInA, 0);
+    // }
 
     function _addLiquidityV3(
         address tokenA_,

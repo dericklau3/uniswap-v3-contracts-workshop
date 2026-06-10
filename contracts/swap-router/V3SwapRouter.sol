@@ -15,20 +15,19 @@ import './base/PeripheryPaymentsWithFeeExtended.sol';
 import './base/OracleSlippage.sol';
 import './libraries/Constants.sol';
 
-/// @title Uniswap V3 Swap Router
-/// @notice Router for stateless execution of swaps against Uniswap V3
+/// @title Uniswap V3 兑换路由
+/// @notice 无状态 V3 兑换路由，支持单跳/多跳、精确输入/精确输出，并配合扩展支付逻辑。
 abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtended, OracleSlippage {
     using Path for bytes;
     using SafeCast for uint256;
 
-    /// @dev Used as the placeholder value for amountInCached, because the computed amount in for an exact output swap
-    /// can never actually be this value
+    /// @dev exact output 输入缓存的占位值；真实 amountIn 不会等于 uint256 最大值。
     uint256 private constant DEFAULT_AMOUNT_IN_CACHED = type(uint256).max;
 
-    /// @dev Transient storage variable used for returning the computed amount in for an exact output swap.
+    /// @dev exact output 反向多跳用到的临时输入金额缓存，调用结束后必须恢复默认值。
     uint256 private amountInCached = DEFAULT_AMOUNT_IN_CACHED;
 
-    /// @dev Returns the pool for the given token pair and fee. The pool contract may or may not exist.
+    /// @dev 根据代币对和手续费计算 V3 池子地址；该地址可能尚未部署。
     function getPool(
         address tokenA,
         address tokenB,
@@ -42,13 +41,14 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         address payer;
     }
 
-    /// @inheritdoc IUniswapV3SwapCallback
+    /// @notice V3 池子 swap 回调，路由在这里支付当前池子要求的输入代币。
+    /// @dev 精确输入直接付款；精确输出按反向 path 继续触发前一跳，直到最后向用户收取真实输入。
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
         bytes calldata _data
     ) external override {
-        require(amount0Delta > 0 || amount1Delta > 0); // swaps entirely within 0-liquidity regions are not supported
+        require(amount0Delta > 0 || amount1Delta > 0); // 不支持完全发生在零流动性区域内的 swap。
         SwapCallbackData memory data = abi.decode(_data, (SwapCallbackData));
         (address tokenIn, address tokenOut, uint24 fee) = data.path.decodeFirstPool();
         CallbackValidation.verifyCallback(factory, tokenIn, tokenOut, fee);
@@ -61,26 +61,26 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         if (isExactInput) {
             pay(tokenIn, data.payer, msg.sender, amountToPay);
         } else {
-            // either initiate the next swap or pay
+            // exact output 采用反向执行：还有前置池子就继续 swap，否则向最终 payer 付款。
             if (data.path.hasMultiplePools()) {
                 data.path = data.path.skipToken();
                 exactOutputInternal(amountToPay, msg.sender, 0, data);
             } else {
                 amountInCached = amountToPay;
-                // note that because exact output swaps are executed in reverse order, tokenOut is actually tokenIn
+                // exact output 的 path 反向编码，此时 tokenOut 实际上是用户要支付的输入代币。
                 pay(tokenOut, data.payer, msg.sender, amountToPay);
             }
         }
     }
 
-    /// @dev Performs a single exact input swap
+    /// @dev 执行单跳精确输入 swap，返回本跳输出数量。
     function exactInputInternal(
         uint256 amountIn,
         address recipient,
         uint160 sqrtPriceLimitX96,
         SwapCallbackData memory data
     ) private returns (uint256 amountOut) {
-        // find and replace recipient addresses
+        // 把 recipient 占位常量替换为实际地址，便于 multicall 中复用参数。
         if (recipient == Constants.MSG_SENDER) recipient = msg.sender;
         else if (recipient == Constants.ADDRESS_THIS) recipient = address(this);
 
@@ -102,14 +102,14 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         return uint256(-(zeroForOne ? amount1 : amount0));
     }
 
-    /// @inheritdoc IV3SwapRouter
+    /// @notice 单池精确输入兑换，输入可指定为合约当前余额。
     function exactInputSingle(ExactInputSingleParams memory params)
         external
         payable
         override
         returns (uint256 amountOut)
     {
-        // use amountIn == Constants.CONTRACT_BALANCE as a flag to swap the entire balance of the contract
+        // amountIn 为 CONTRACT_BALANCE 时，表示把路由合约里该输入代币的余额全部换掉。
         bool hasAlreadyPaid;
         if (params.amountIn == Constants.CONTRACT_BALANCE) {
             hasAlreadyPaid = true;
@@ -128,9 +128,9 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         require(amountOut >= params.amountOutMinimum, 'Too little received');
     }
 
-    /// @inheritdoc IV3SwapRouter
+    /// @notice 多池精确输入兑换，每一跳输出会成为下一跳输入。
     function exactInput(ExactInputParams memory params) external payable override returns (uint256 amountOut) {
-        // use amountIn == Constants.CONTRACT_BALANCE as a flag to swap the entire balance of the contract
+        // amountIn 为 CONTRACT_BALANCE 时，用 path 第一个 token 在本合约里的全部余额作为输入。
         bool hasAlreadyPaid;
         if (params.amountIn == Constants.CONTRACT_BALANCE) {
             hasAlreadyPaid = true;
@@ -143,18 +143,18 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         while (true) {
             bool hasMultiplePools = params.path.hasMultiplePools();
 
-            // the outputs of prior swaps become the inputs to subsequent ones
+            // 前一跳输出成为后一跳输入；中间资产由路由合约临时托管。
             params.amountIn = exactInputInternal(
                 params.amountIn,
-                hasMultiplePools ? address(this) : params.recipient, // for intermediate swaps, this contract custodies
+                hasMultiplePools ? address(this) : params.recipient, // 中间跳输出留在本合约。
                 0,
                 SwapCallbackData({
-                    path: params.path.getFirstPool(), // only the first pool in the path is necessary
+                    path: params.path.getFirstPool(), // 当前 swap 只需要 path 中第一个池子。
                     payer: payer
                 })
             );
 
-            // decide whether to continue or terminate
+            // 还有下一跳就推进 path；最后一跳输出即为最终 amountOut。
             if (hasMultiplePools) {
                 payer = address(this);
                 params.path = params.path.skipToken();
@@ -167,14 +167,14 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         require(amountOut >= params.amountOutMinimum, 'Too little received');
     }
 
-    /// @dev Performs a single exact output swap
+    /// @dev 执行单跳精确输出 swap，返回本跳需要的输入数量。
     function exactOutputInternal(
         uint256 amountOut,
         address recipient,
         uint160 sqrtPriceLimitX96,
         SwapCallbackData memory data
     ) private returns (uint256 amountIn) {
-        // find and replace recipient addresses
+        // 把 recipient 占位常量替换为实际地址，便于 multicall 中复用参数。
         if (recipient == Constants.MSG_SENDER) recipient = msg.sender;
         else if (recipient == Constants.ADDRESS_THIS) recipient = address(this);
 
@@ -197,19 +197,18 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         (amountIn, amountOutReceived) = zeroForOne
             ? (uint256(amount0Delta), uint256(-amount1Delta))
             : (uint256(amount1Delta), uint256(-amount0Delta));
-        // it's technically possible to not receive the full output amount,
-        // so if no price limit has been specified, require this possibility away
+        // 未指定价格限制时，要求本跳必须完整收到目标输出，避免部分成交语义泄漏到上层。
         if (sqrtPriceLimitX96 == 0) require(amountOutReceived == amountOut);
     }
 
-    /// @inheritdoc IV3SwapRouter
+    /// @notice 单池精确输出兑换，限制最大输入金额。
     function exactOutputSingle(ExactOutputSingleParams calldata params)
         external
         payable
         override
         returns (uint256 amountIn)
     {
-        // avoid an SLOAD by using the swap return data
+        // 单跳可直接使用 swap 返回值，避免读取 amountInCached。
         amountIn = exactOutputInternal(
             params.amountOut,
             params.recipient,
@@ -218,11 +217,11 @@ abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtende
         );
 
         require(amountIn <= params.amountInMaximum, 'Too much requested');
-        // has to be reset even though we don't use it in the single hop case
+        // 单跳虽然不依赖缓存，也恢复默认值，避免后续调用读到旧状态。
         amountInCached = DEFAULT_AMOUNT_IN_CACHED;
     }
 
-    /// @inheritdoc IV3SwapRouter
+    /// @notice 多池精确输出兑换，从最终输出反向执行，计算用户实际需要支付的输入。
     function exactOutput(ExactOutputParams calldata params) external payable override returns (uint256 amountIn) {
         exactOutputInternal(
             params.amountOut,

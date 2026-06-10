@@ -13,8 +13,8 @@ import './libraries/PoolAddress.sol';
 import './libraries/NFTDescriptor.sol';
 import './libraries/TokenRatioSortOrder.sol';
 
-/// @title Describes NFT token positions
-/// @notice Produces a string containing the data URI for a JSON metadata string
+/// @title NFT 仓位描述器
+/// @notice 根据 V3 仓位 NFT 数据生成 JSON metadata 的 data URI 字符串。
 contract NonfungibleTokenPositionDescriptor is INonfungibleTokenPositionDescriptor {
     address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -28,7 +28,8 @@ contract NonfungibleTokenPositionDescriptor is INonfungibleTokenPositionDescript
         WETH9 = _WETH9;
     }
 
-    /// @inheritdoc INonfungibleTokenPositionDescriptor
+    /// @notice 生成指定仓位 NFT 的 tokenURI。
+    /// @dev 会读取仓位对应池子的当前 tick、tickSpacing、代币符号和小数位，再交给 NFTDescriptor 组装。
     function tokenURI(INonfungiblePositionManager positionManager, uint256 tokenId)
         external
         view
