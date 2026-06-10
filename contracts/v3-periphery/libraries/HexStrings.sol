@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity =0.7.6;
 
+/// @title 固定长度十六进制字符串工具
+/// @notice 把地址、颜色等整数编码为 NFT metadata/SVG 可使用的 ASCII 文本。
+/// @dev 调用者必须提供足够 length；若数值放不下会回退，避免静默截断高位。
 library HexStrings {
     bytes16 internal constant ALPHABET = '0123456789abcdef';
 

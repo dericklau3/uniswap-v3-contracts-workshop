@@ -3,6 +3,10 @@ pragma solidity >=0.6.0;
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 
+/// @title Swap 跨越初始化 tick 计数器
+/// @notice 根据起止 tick 和 Pool bitmap，统计一次报价预计跨越多少个真实流动性边界。
+/// @dev QuoterV2 用该数字解释 gas 成本：跨越已初始化 tick 时 Pool 要更新 outside 累计值与活跃流动性，
+/// 通常比只在一个区间内移动价格更贵。起点和终点是否计数取决于移动方向，与 Pool 的边界语义保持一致。
 library PoolTicksCounter {
     /// @dev 统计 tickBefore 与 tickAfter 之间会在交换中产生跨越 gas 成本的已初始化 tick 数量。
     /// 若起点或终点本身已初始化，是否计数取决于交换方向：价格向上时不计起点但计终点；

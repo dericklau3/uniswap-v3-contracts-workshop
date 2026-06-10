@@ -3,6 +3,8 @@ pragma solidity >=0.7.0;
 
 /// @title 低 gas 的安全数学运算
 /// @notice 以较低 gas 成本执行算术，并在溢出或下溢时回退
+/// @dev 这些合约固定在 Solidity 0.7.x，编译器尚不会自动检查整数溢出。
+/// 库只实现核心热路径需要的少量操作，避免引入更大通用库；Solidity 0.8+ 中多数场景可用内置检查替代。
 library LowGasSafeMath {
     /// @notice 返回 x + y，uint256 加法溢出时回退
     /// @param x 被加数

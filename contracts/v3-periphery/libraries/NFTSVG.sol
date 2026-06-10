@@ -7,6 +7,8 @@ import 'base64-sol/base64.sol';
 
 /// @title Uniswap V3 头寸 NFT 的 SVG 生成库
 /// @notice 根据池、价格区间、token 和颜色参数生成链上 SVG 图像
+/// @dev 图像中的曲线、边界、颜色和文本由仓位参数确定，同一 tokenId 可稳定生成对应视觉标识。
+/// SVG 最终嵌入 tokenURI 的 data URI，不需要外部存储。该库只做字符串渲染，不读取或修改 Pool 状态。
 library NFTSVG {
     using Strings for uint256;
 

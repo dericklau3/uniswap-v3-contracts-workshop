@@ -3,6 +3,9 @@ pragma solidity >=0.6.0;
 
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 
+/// @title V3 报价跨 tick 计数
+/// @notice 统计起止价格之间实际跨越的初始化流动性边界，供 QuoterV2 估算复杂度。
+/// @dev 只有 bitmap 中置位的 tick 会触发 Pool 的 outside 与 liquidity 更新；空 tick 不计入。
 library PoolTicksCounter {
     /// @dev 统计 tickBefore 与 tickAfter 之间会在交换中产生跨越 gas 成本的已初始化 tick 数量。
     /// 若起点或终点本身已初始化，是否计数取决于交换方向：价格向上时不计起点但计终点；

@@ -11,10 +11,12 @@ import '../interfaces/ISwapRouter02.sol';
 import '../interfaces/ITokenValidator.sol';
 import '../base/ImmutableState.sol';
 
+/// @title Token 转账行为探测器
 /// @notice 通过 V2 的 token/baseToken 池子闪借目标 token，粗略判断 token 转账是否会扣费或失败。
 /// @notice 返回 Status.FOT 表示检测到转账扣费，Status.STF 表示 token 转账失败，Status.UNKN 表示无法确认异常。
 /// @dev UNKN 不代表 token 一定安全，只代表这次探测没有发现问题。
 /// 结果不保证完全准确：有些 token 只在特定地址/条件下扣费，也可能根本没有可用 V2 池子来闪借测试。
+/// 探测通过 callback 在同一交易中借出并尝试归还 token，适合前端风险提示，不能替代完整 token 审计。
 contract TokenValidator is ITokenValidator, IUniswapV2Callee, ImmutableState {
     string internal constant FOT_REVERT_STRING = 'FOT';
     // https://github.com/Uniswap/v2-core/blob/1136544ac842ff48ae0b1b939701436598d74075/contracts/UniswapV2Pair.sol#L46

@@ -10,6 +10,14 @@ import '../libraries/TransferHelper.sol';
 
 import './PeripheryImmutableState.sol';
 
+/// @title 外围合约统一支付与余额清算模块
+/// @notice 处理 ERC20 拉款、合约余额付款、ETH 包装成 WETH，以及交易结束后的退款和扫款。
+/// @dev callback 只说明“池需要多少 token”，真正的付款来源由 `pay` 决定：
+/// - 合约有足够 ETH 且目标是 WETH9：现包 WETH 后付款；
+/// - payer 是本合约：使用多跳或 multicall 留下的余额；
+/// - 其他情况：通过 transferFrom 从用户账户直接转给池。
+///
+/// multicall 期间本合约可能短暂持有 ETH、WETH 或中间 token，末尾通常调用 unwrap、sweep 或 refund 清算。
 abstract contract PeripheryPayments is IPeripheryPayments, PeripheryImmutableState {
     receive() external payable {
         require(msg.sender == WETH9, 'Not WETH9');

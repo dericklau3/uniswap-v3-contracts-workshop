@@ -11,6 +11,9 @@ import './PoolAddress.sol';
 import './PositionKey.sol';
 
 /// @title 计算 Uniswap V3 头寸 NFT 持有的 token 价值
+/// @notice 将仓位拆成“仍在曲线中做市的本金”和“已经累计、可领取的手续费”。
+/// @dev 返回值是两种 token 的原始数量，不是法币估值。若要得到统一价值，还需要可靠价格源并处理 decimals。
+/// 本金构成随当前价格变化；手续费通过当前区间 feeGrowth 与 NFT 保存快照之差，再加 tokensOwed 得出。
 library PositionValue {
     /// @notice 返回指定头寸 NFT 的 token0 和 token1 总价值，即本金与手续费之和
     /// @param positionManager Uniswap V3 NonfungiblePositionManager

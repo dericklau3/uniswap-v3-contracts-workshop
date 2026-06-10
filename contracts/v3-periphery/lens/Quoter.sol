@@ -16,6 +16,9 @@ import '../libraries/CallbackValidation.sol';
 /// @title Swap 报价工具
 /// @notice 在不真正完成 swap 的情况下，模拟得到预期输出或所需输入。
 /// @dev 这些函数依赖“回调中 revert 并携带报价数据”的技巧，gas 不低，不应在链上业务路径中调用。
+/// V3 没有简单的只读报价公式，因为真实成交可能跨越多个 tick 并多次改变活跃流动性。
+/// Quoter 调用真实 pool.swap，在 callback 中把结果编码进 revert data；外层捕获后解码，
+/// Pool 的临时状态则随回退全部撤销。前端通常通过 `eth_call` 使用它。
 contract Quoter is IQuoter, IUniswapV3SwapCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;

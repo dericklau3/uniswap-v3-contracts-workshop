@@ -3,7 +3,11 @@ pragma solidity >=0.5.0 <0.8.0;
 
 /// @title tick 与平方根价格互相转换的数学库
 /// @notice 每个 tick 对应 1.0001 的指数价格，将 sqrt(1.0001^tick) 表示为 Q64.96 定点数
-/// @dev 支持 2**-128 到 2**128 之间的价格
+/// @dev 普通价格满足 `price = 1.0001^tick`。tick 每增加 1，token1/token0 价格约增加 0.01%；
+/// 使用平方根价格后可直接代入流动性公式。正 tick 表示 token1 相对 token0 更贵，负 tick 表示更便宜，
+/// 但展示“哪个 token 值多少”时还要考虑 token 地址方向和 decimals。
+///
+/// 转换使用预计算常量和二进制分解，避免链上计算指数与对数。支持的价格范围约为 2^-128 到 2^128。
 library TickMath {
     /// @dev getSqrtRatioAtTick 可接受的最小 tick，由 log base 1.0001 of 2**-128 计算得到
     int24 internal constant MIN_TICK = -887272;

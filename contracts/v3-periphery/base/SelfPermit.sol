@@ -10,6 +10,8 @@ import '../interfaces/external/IERC20PermitAllowed.sol';
 /// @title 自助 Permit
 /// @notice 在路由里直接调用支持 EIP-2612 的 token permit，省去用户单独 approve 的交易。
 /// @dev 通常嵌入 multicall：EOA 在同一笔交易里完成签名授权和需要授权的业务调用。
+/// 授权对象固定为当前 Router/PositionManager，随后 callback 付款时才能从用户账户 transferFrom。
+/// `IfNecessary` 版本在 allowance 已足够时跳过 permit，便于重复提交或兼容签名已被提前使用的情况。
 abstract contract SelfPermit is ISelfPermit {
     /// @notice 使用标准 EIP-2612 permit 给当前合约授权。
     function selfPermit(

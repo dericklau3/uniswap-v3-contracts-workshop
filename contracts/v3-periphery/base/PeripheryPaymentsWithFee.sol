@@ -10,6 +10,9 @@ import '../interfaces/IPeripheryPaymentsWithFee.sol';
 import '../interfaces/external/IWETH9.sol';
 import '../libraries/TransferHelper.sol';
 
+/// @title 支持服务费的支付清算扩展
+/// @notice 在 unwrap WETH 或 sweep ERC20 时，将余额的一部分给 feeRecipient，其余发给用户。
+/// @dev 它只对本合约已经持有的交易结果收费，不会改变 Pool 的 LP 手续费或协议费。
 abstract contract PeripheryPaymentsWithFee is PeripheryPayments, IPeripheryPaymentsWithFee {
     using LowGasSafeMath for uint256;
 

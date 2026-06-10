@@ -11,6 +11,8 @@ import './BlockTimestamp.sol';
 
 /// @title 带 permit 的 ERC721
 /// @notice 支持通过签名完成 approve 的 NFT，也就是 ERC721 版本的 permit。
+/// @dev 每个 tokenId 使用独立 nonce，授权成功后递增，防止签名重放。
+/// EIP-712 域同时绑定链 ID 和合约地址，因此签名不能直接跨链或跨 PositionManager 使用。
 abstract contract ERC721Permit is BlockTimestamp, ERC721, IERC721Permit {
     /// @dev 获取 tokenId 当前 nonce 并自增，返回自增前的 nonce。
     function _getAndIncrementNonce(uint256 tokenId) internal virtual returns (uint256);

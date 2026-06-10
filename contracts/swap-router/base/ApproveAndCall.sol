@@ -11,6 +11,8 @@ import './ImmutableState.sol';
 /// @title 授权并调用
 /// @notice 允许调用者让本合约先授权 V3 仓位管理器，再把调用转发给仓位管理器。
 /// @dev 主要用于 multicall：先把 token 拉到路由，再授权 positionManager 并 mint/increase。
+/// ERC20 approve 行为并不统一：部分 token 要求先归零，部分不接受 uint256.max。
+/// 本模块探测可用方式，让 Router 余额能交给固定 PositionManager 使用。
 abstract contract ApproveAndCall is IApproveAndCall, ImmutableState {
     function tryApprove(address token, uint256 amount) private returns (bool) {
         (bool success, bytes memory data) =

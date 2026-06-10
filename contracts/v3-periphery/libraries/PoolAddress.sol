@@ -2,6 +2,9 @@
 pragma solidity >=0.5.0;
 
 /// @title 根据工厂、token 和费率推导池地址
+/// @notice 对 token 排序并复现 Factory 的 CREATE2 地址公式，无需外部查询注册表。
+/// @dev 计算结果只说明“若部署会在这个地址”，不保证该地址已有代码。
+/// Router 在预期池存在的路径中使用它，同时 callback 验证也依赖同一确定性地址。
 library PoolAddress {
     bytes32 internal constant POOL_INIT_CODE_HASH = 0x6d8d409b721a2b71d4cb7bf5c497b0543bc2e1d16957e92e8ff8265cdd33c512;
 

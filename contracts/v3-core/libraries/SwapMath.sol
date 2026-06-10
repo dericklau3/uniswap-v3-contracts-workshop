@@ -6,6 +6,12 @@ import './SqrtPriceMath.sol';
 
 /// @title 计算单个 tick 区间内的交换结果
 /// @notice 在当前流动性保持不变的价格区间内，计算一步交换后的价格、输入、输出和手续费
+/// @dev Pool.swap 负责整条路线，本库只负责“一步”。一步的目标价格通常是下一个已初始化 tick，
+/// 也可能是用户设置的价格限制。若剩余数量足够，就移动到目标并让 Pool 跨 tick 更新 liquidity；
+/// 若不够，就在当前区间内耗尽剩余数量并结束。
+///
+/// 精确输入先从预算中预留手续费，再用净输入推动价格；精确输出先判断到达目标最多能给多少输出，
+/// 不够时移动到目标，足够时只移动到刚好满足输出的位置。
 library SwapMath {
     /// @notice 根据本步交换参数计算区间内的执行结果
     /// @dev amountRemaining 为正表示精确输入，为负表示精确输出。精确输入时，amountIn 与 feeAmount 之和
@@ -40,15 +46,10 @@ library SwapMath {
         bool exactIn = amountRemaining >= 0;
 
         if (exactIn) {
-            // 精确输入：先扣除最大可能手续费，再判断净输入是否足以到达目标价格
-            // amountRemaining = 1e18
-            // liquidity = 973798273304651675783298
-            // tickLower  sqrtRatioTargetX96 = 3952629513152786976618542036214
-            // currentTick sqrtRatioCurrentX96 = 4687139750112641453566970974490
-            // amountRemainingLessFee = amountRemaining * 997000 / 1e6;
+            // 精确输入：先按费率从总预算中分离净输入，再判断净输入是否足以把价格推到目标。
+            // 例如 0.3% 费率下，用户给 1000 单位预算，最多有 997 单位参与曲线交换，约 3 单位作为费用。
             uint256 amountRemainingLessFee = FullMath.mulDiv(uint256(amountRemaining), 1e6 - feePips, 1e6);
-            // zeroForOne=true  amountIn = 3058809464533194827856 =  liquidity * 2**96 * (sqrt_p - sqrt_pl) / sqrt_p / sqrt_pl
-            // zeroForOne=false amountIn = 5979871796716035528730 = liquidity * (sqrt_p - sqrt_pnext) / 2**96
+            // 根据交换方向计算“从当前价格完整走到目标价格”需要的净输入量。
             amountIn = zeroForOne
                 ? SqrtPriceMath.getAmount0Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, true)
                 : SqrtPriceMath.getAmount1Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, true);

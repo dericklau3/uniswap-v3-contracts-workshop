@@ -3,8 +3,9 @@
  * @title Solidity bytes 数组工具
  * @author Gonçalo Sá <goncalo.sa@consensys.net>
  *
- * @dev 面向 Solidity 以太坊合约的紧凑 bytes 数组工具库。
- *      支持对内存和存储中的 bytes 数组执行拼接、切片和类型转换。
+ * @dev 面向 Solidity 的紧凑 bytes 数组工具库，支持拼接、切片和类型转换。
+ *      V3 Path 使用它从紧凑 calldata 中读取 20 字节 token 地址和 3 字节 fee。
+ *      汇编代码手动维护内存长度、对齐和 free-memory pointer；调用方必须先保证切片边界有效。
  */
 pragma solidity >=0.5.0 <0.8.0;
 

@@ -13,6 +13,10 @@ import 'base64-sol/base64.sol';
 import './HexStrings.sol';
 import './NFTSVG.sol';
 
+/// @title V3 仓位 NFT 元数据组装库
+/// @notice 把 token、费率、价格区间和当前价格转换为名称、描述、属性及链上 SVG data URI。
+/// @dev 这里还负责把 tick 价格按 base/quote 方向、token decimals 和显示精度格式化。
+/// 它只影响 NFT 展示，不参与仓位会计或资金安全；复杂字符串逻辑从 PositionManager 独立出来可减小职责耦合。
 library NFTDescriptor {
     using TickMath for int24;
     using Strings for uint256;

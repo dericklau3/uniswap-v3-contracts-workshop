@@ -6,6 +6,12 @@ import '@uniswap/v3-core/contracts/libraries/FixedPoint96.sol';
 
 /// @title 流动性与 token 数量换算函数
 /// @notice 根据价格区间和 token 数量计算流动性，或反向计算流动性对应的 token 数量
+/// @dev liquidity 是曲线份额，不等同于 token 数量。仓位真实构成取决于当前价格：
+/// 区间下方全是 token0，区间上方全是 token1，区间内部则两者并存。
+///
+/// 正向函数用于 mint：根据用户两种 token 预算计算最大 liquidity；
+/// 反向函数用于估值和减仓：根据 liquidity 计算当前价格下对应的 token0/token1。
+/// 位于区间内时取两种预算可支持 liquidity 的较小值，避免要求用户支付超出预算的一侧。
 library LiquidityAmounts {
     /// @notice 将 uint256 安全向下转换为 uint128
     /// @param x 待转换的 uint256

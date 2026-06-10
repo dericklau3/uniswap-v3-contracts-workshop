@@ -7,6 +7,8 @@ import '@uniswap/v3-core/contracts/libraries/FixedPoint96.sol';
 
 /// @title 基于 Q64.96 平方根价格和流动性的部分数学函数
 /// @notice 暴露 core SqrtPriceMath 中根据价格区间和流动性计算 token 数量变化的两个函数
+/// @dev 该副本供外围估值与展示代码使用，只保留 amount0/amount1 delta 两个方向。
+/// `roundUp=true` 适合计算调用方至少应支付多少，`roundUp=false` 适合计算最多可安全给出多少。
 library SqrtPriceMathPartial {
     /// @notice 计算两个价格之间对应的 token0 数量变化
     /// @dev 计算 liquidity / sqrt(lower) - liquidity / sqrt(upper)，即

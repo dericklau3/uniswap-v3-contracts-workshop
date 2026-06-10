@@ -18,6 +18,7 @@ import '../libraries/PoolTicksCounter.sol';
 /// @title Swap 报价工具 V2
 /// @notice 模拟 swap 报价，并额外返回 swap 后价格、跨过的初始化 tick 数和 gas 估算。
 /// @dev 依赖“回调中 revert 并携带报价数据”的技巧，gas 不低，不应在链上业务路径中调用。
+/// 跨越 tick 数用于解释执行复杂度与 gas，swap 后价格用于前端展示价格影响。
 contract QuoterV2 is IQuoterV2, IUniswapV3SwapCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;

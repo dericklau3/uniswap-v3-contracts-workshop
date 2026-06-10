@@ -10,6 +10,12 @@ import './UniswapV3Pool.sol';
 
 /// @title Uniswap V3 官方工厂合约
 /// @notice 负责创建 V3 池子，并管理池子协议费相关的 owner 权限。
+/// @dev 工厂是所有 V3 池的注册表。一个市场由排序后的 `(token0, token1, fee)` 唯一确定，
+/// 因而同一代币对可以同时存在 0.05%、0.3%、1% 等不同手续费池，但同一费率不能重复建池。
+///
+/// 手续费档位同时绑定 `tickSpacing`：低费率通常允许更密的价格刻度，适合稳定币等窄幅市场；
+/// 高费率使用更稀疏的刻度，降低存储与跨 tick 成本，更适合波动资产。Factory owner 只能新增档位、
+/// 转移管理权，以及通过池接口配置协议费，不能替 LP 移动资金或修改既有池的核心参数。
 contract UniswapV3Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegateCall {
     /// @notice 工厂管理员地址，可开启新的手续费档位并管理池子的协议费参数。
     address public override owner;
@@ -38,6 +44,8 @@ contract UniswapV3Factory is IUniswapV3Factory, UniswapV3PoolDeployer, NoDelegat
 
     /// @notice 为一对代币和一个已启用手续费档位创建唯一的 V3 池子。
     /// @dev 代币会按地址排序为 token0/token1；同一 token0/token1/fee 只能创建一次。
+    /// 部署使用 CREATE2，salt 仅由 token0、token1、fee 决定，所以 Router 可以不读取注册表，
+    /// 直接在链下或链上推导池地址。新池部署后仍处于未初始化状态，必须另行调用 `initialize` 设置首价。
     function createPool(
         address tokenA,
         address tokenB,

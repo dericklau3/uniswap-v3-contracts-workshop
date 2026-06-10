@@ -3,6 +3,10 @@ pragma solidity >=0.6.0;
 
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
+/// @title 外围合约安全转账工具
+/// @notice 统一处理 transfer、transferFrom、approve 和 ETH 转账，并兼容不返回 bool 的老 ERC20。
+/// @dev 外围 callback、退款和多跳支付都依赖真实资产移动；低级调用失败或显式返回 false 时统一回退，
+/// 防止业务状态继续执行而付款实际上没有发生。
 library TransferHelper {
     /// @notice 从指定地址向目标地址转移 token
     /// @dev transferFrom 失败时以 STF 回退

@@ -16,6 +16,8 @@ import '../interfaces/IQuoter.sol';
 /// @title Swap 报价工具
 /// @notice 在不真正完成 swap 的情况下，模拟得到预期输出或所需输入。
 /// @dev 这些函数依赖“回调中 revert 并携带报价数据”的技巧，gas 不低，不应在链上业务路径中调用。
+/// 它执行与真实 V3 swap 相同的跨 tick 路径，并在 callback 主动 revert 返回报价；
+/// 外层捕获数据后 Pool 状态随回退撤销。主要通过链下 `eth_call` 使用。
 contract Quoter is IQuoter, IUniswapV3SwapCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;

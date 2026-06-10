@@ -14,6 +14,11 @@ import '../interfaces/ISwapRouter.sol';
 
 /// @title Flash 示例合约
 /// @notice 演示如何使用 Uniswap V3 flash 借出资产，并在回调中做跨费率池套利。
+/// @dev 示例从一个池借出 token0/token1，再到同一交易对的其他费率池执行两次 swap，
+/// 最后偿还本金加 flash fee，剩余利润转给 payer。整个过程必须在同一交易 callback 内完成；
+/// 任一 swap 收益不足以偿债，最终还款或利润检查会回退整笔交易。
+///
+/// 这是教学示例而非通用套利器：真实策略还需处理报价、滑点、MEV、token 行为和利润阈值。
 contract PairFlash is IUniswapV3FlashCallback, PeripheryPayments {
     using LowGasSafeMath for uint256;
     using LowGasSafeMath for int256;

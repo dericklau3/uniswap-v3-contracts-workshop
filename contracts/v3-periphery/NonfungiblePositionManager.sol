@@ -20,6 +20,18 @@ import './base/PoolInitializer.sol';
 
 /// @title NFT 仓位
 /// @notice 将 Uniswap V3 的流动性仓位包装成 ERC721 NFT，方便转让、授权和展示元数据。
+/// @dev Core Pool 只认识 `(owner, tickLower, tickUpper)`，不会为每次加仓生成独立凭证。
+/// 本合约始终以自己作为 core 仓位 owner，再为用户铸造 NFT，并在 `_positions[tokenId]` 中保存区间、
+/// 流动性和手续费快照。因此转让 NFT 只需改变 ERC721 所有权，不需要迁移 Pool 内的底层仓位。
+///
+/// 一张仓位 NFT 的常见生命周期：
+/// 1. `mint`：向 Pool 添加流动性，随后铸造 NFT；
+/// 2. `increaseLiquidity`：继续加仓，并先结算旧流动性手续费；
+/// 3. `decreaseLiquidity`：在 Pool 中 burn，把退出本金记入可领取余额；
+/// 4. `collect`：从 Pool 提款并转给指定 recipient；
+/// 5. `burn(tokenId)`：流动性和待领取余额都为 0 时销毁空 NFT。
+///
+/// 这里存在两层手续费账：Pool 记录本合约的 core 仓位，本合约再按每张 NFT 的流动性与快照分账。
 contract NonfungiblePositionManager is
     INonfungiblePositionManager,
     Multicall,

@@ -7,6 +7,9 @@ import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '../interfaces/ITickLens.sol';
 
 /// @title Tick 查询 Lens 合约
+/// @notice 批量读取一个 bitmap word 中全部已初始化 tick 的流动性信息。
+/// @dev Pool 的公开 mapping 只能逐 tick 查询。Lens 先读取 256 位 bitmap，再只查询置位的 tick，
+/// 适合前端构建流动性分布图；它不参与 swap，也不会修改池状态。
 contract TickLens is ITickLens {
     /// @notice 读取某个 tickBitmap word 中所有已初始化 tick 及其流动性信息。
     /// @dev 前端可用它批量展开 tick 位图，避免逐个 tick 查询。

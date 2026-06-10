@@ -15,6 +15,9 @@ import './libraries/TokenRatioSortOrder.sol';
 
 /// @title NFT 仓位描述器
 /// @notice 根据 V3 仓位 NFT 数据生成 JSON metadata 的 data URI 字符串。
+/// @dev PositionManager 把展示逻辑拆到独立描述器，避免核心资金管理合约承载大量字符串与 SVG 代码。
+/// 本合约读取仓位、池当前 tick、token symbol/decimals，再决定报价方向并交给 NFTDescriptor。
+/// 最终 metadata 和图片都可完全链上生成，不依赖中心化图片服务器；代价是只读调用计算量较大。
 contract NonfungibleTokenPositionDescriptor is INonfungibleTokenPositionDescriptor {
     address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
     address private constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;

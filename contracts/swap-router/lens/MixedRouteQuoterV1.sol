@@ -22,6 +22,8 @@ import '../libraries/UniswapV2Library.sol';
 /// @notice 在不真正完成 swap 的情况下，模拟 V2、V3 或混合路径的精确输入输出数量。
 /// @notice 不支持精确输出报价，因为 exactOut 多跳需要依赖合约中间余额。
 /// @dev V3 报价依赖回调 revert 携带数据，gas 不低，不应在链上业务路径中调用。
+/// 路径借用 24 位 fee 字段的最高位标记该跳类型：V2 跳按储备公式计算，V3 跳执行模拟 swap。
+/// 每一跳输出成为下一跳输入，从而可以比较纯 V2、纯 V3 和混合路线。
 contract MixedRouteQuoterV1 is IMixedRouteQuoterV1, IUniswapV3SwapCallback, PeripheryImmutableState {
     using Path for bytes;
     using SafeCast for uint256;

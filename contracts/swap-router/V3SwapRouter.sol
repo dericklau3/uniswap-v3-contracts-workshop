@@ -17,6 +17,9 @@ import './libraries/Constants.sol';
 
 /// @title Uniswap V3 兑换路由
 /// @notice 无状态 V3 兑换路由，支持单跳/多跳、精确输入/精确输出，并配合扩展支付逻辑。
+/// @dev 相比基础 V3 Router，本版本支持特殊 recipient 哨兵、使用合约全部余额作为输入、
+/// oracle slippage 检查，以及与 V2、PositionManager 和扩展 multicall 的组合。
+/// 精确输入正向执行；精确输出在 callback 中沿反向路径递归计算前置输入。
 abstract contract V3SwapRouter is IV3SwapRouter, PeripheryPaymentsWithFeeExtended, OracleSlippage {
     using Path for bytes;
     using SafeCast for uint256;

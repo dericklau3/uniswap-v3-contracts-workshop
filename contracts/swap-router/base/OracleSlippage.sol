@@ -11,6 +11,10 @@ import '../../v3-periphery/libraries/PoolAddress.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 
+/// @title 基于 V3 Oracle 的路径级滑点检查
+/// @notice 比较交易路径的合成 tick 与历史平均 tick，限制执行价格相对参考价格的偏差。
+/// @dev 多跳路径按 token 地址方向给每跳 tick 加减，使中间 token 价格比在合成时相互抵消。
+/// 窗口过短更易受操纵，限制过严则更易因正常波动回退，调用方需要结合池深度选择参数。
 abstract contract OracleSlippage is IOracleSlippage, PeripheryImmutableState, BlockTimestamp {
     using Path for bytes;
 

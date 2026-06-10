@@ -7,9 +7,16 @@ import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 
 /// @title 预言机辅助库
 /// @notice 提供读取和组合 Uniswap V3 池预言机数据的函数
+/// @dev Core Oracle 返回累计 tick 与累计每份流动性秒数，本库把它们转换成平均 tick、
+/// 调和平均流动性、token 报价和多池合成价格等应用层结果。
+///
+/// TWAP 只能降低单笔交易操纵瞬时价格的风险，不代表绝对安全。使用方仍需选择合适窗口、
+/// 确认 observation 历史足够长，并评估池规模与窗口内的低流动性时段。
 library OracleLibrary {
     /// @notice 计算指定 V3 池在给定时间窗口内的时间加权平均 tick 和调和平均流动性
-    /// @dev 平均 tick 对应时间加权几何平均价格；调和平均流动性会更敏感地反映低流动性时段
+    /// @dev 读取 `[secondsAgo, 0]` 两个累计值后做差并除以窗口长度。
+    /// 平均 tick 对应时间加权几何平均价格；调和平均流动性更敏感地反映低流动性时段，
+    /// 窗口内哪怕短暂出现极低流动性，也会明显拉低结果。
     /// @param pool 待读取的池地址
     /// @param secondsAgo 时间窗口长度，单位为秒
     /// @return arithmeticMeanTick 从 block.timestamp - secondsAgo 到当前时刻的算术平均 tick

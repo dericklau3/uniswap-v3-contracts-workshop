@@ -18,6 +18,10 @@ import './base/PoolInitializer.sol';
 
 /// @title Uniswap V3 迁移器
 /// @notice 将用户的 V2 LP 份额烧掉后，把得到的 token 按比例迁移成 V3 仓位 NFT。
+/// @dev V2 LP token 代表覆盖全价格区间的恒定乘积份额；V3 需要用户选择 fee 和 tick 区间。
+/// 迁移流程先把 V2 LP 转给 Pair 并 burn，收到两种底层 token，再授权 PositionManager mint V3 NFT。
+/// 若 V3 仓位没有用完全部资产，剩余 token 会按参数决定退还用户或留给后续 multicall 步骤。
+/// 迁移本身不会保证新 V3 区间适合市场风险，tick 选择仍由调用者负责。
 contract V3Migrator is IV3Migrator, PeripheryImmutableState, PoolInitializer, Multicall, SelfPermit {
     using LowGasSafeMath for uint256;
 

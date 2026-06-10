@@ -6,6 +6,9 @@ import '@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol';
 
 import '../interfaces/IPeripheryPaymentsExtended.sol';
 
+/// @title 面向 multicall 的支付快捷入口
+/// @notice 把基础支付模块的 recipient 默认设为 msg.sender，并增加 wrap ETH 与 pull ERC20。
+/// @dev 用户可先把资产放进 Router，再用合约余额完成后续 swap 或加仓，最后统一 sweep/unwrap。
 abstract contract PeripheryPaymentsExtended is IPeripheryPaymentsExtended, PeripheryPayments {
     /// @notice 将本合约持有的 WETH9 解包成 ETH 并发送给调用者。
     function unwrapWETH9(uint256 amountMinimum) external payable override {

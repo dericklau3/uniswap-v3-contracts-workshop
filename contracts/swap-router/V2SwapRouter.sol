@@ -13,6 +13,9 @@ import './libraries/UniswapV2Library.sol';
 
 /// @title Uniswap V2 兑换路由
 /// @notice 无状态 V2 兑换路由，负责把输入转入第一个 pair 并逐跳执行 swap。
+/// @dev V2 Pair 保存两种 token 储备，输出按恒定乘积公式计算。路由先把输入发给第一 Pair，
+/// 每一跳再把输出直接发往下一 Pair，最后一跳才发给 recipient，因此中间资产无需停留在 Router。
+/// 本实现用“Pair 实际余额 - 已记录储备”识别输入，兼容转账扣费 token。
 abstract contract V2SwapRouter is IV2SwapRouter, ImmutableState, PeripheryPaymentsWithFeeExtended {
     using LowGasSafeMath for uint256;
 

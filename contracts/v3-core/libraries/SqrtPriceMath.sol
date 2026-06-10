@@ -10,6 +10,12 @@ import './FixedPoint96.sol';
 
 /// @title 基于 Q64.96 平方根价格和流动性的数学函数
 /// @notice 使用 Q64.96 格式的平方根价格与流动性计算价格变化和 token 数量变化
+/// @dev 它连接了三类业务量：当前平方根价格、某个区间内固定的 liquidity、交易的 token 数量。
+/// 在一个 tick 区间内 liquidity 不变，因此输入 token 数量可以唯一决定新价格，反过来也可由起止价格
+/// 算出所需 token0/token1。Pool 的 swap、mint 和 burn 最终都依赖这些换算。
+///
+/// 取整方向属于资金安全规则，不只是数学细节：池计算用户“应付”时通常向上取整，避免少收；
+/// 计算用户“应得输出”时通常向下取整，避免多付。最多 1 wei 的偏差始终保守地留在池内。
 library SqrtPriceMath {
     using LowGasSafeMath for uint256;
     using SafeCast for uint256;

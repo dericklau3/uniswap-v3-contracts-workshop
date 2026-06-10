@@ -3,7 +3,9 @@ pragma solidity >=0.4.0 <0.8.0;
 
 /// @title 512 位精度数学函数
 /// @notice 在不损失精度的情况下完成可能产生 256 位中间溢出的乘除运算
-/// @dev 处理“幻影溢出”：a * b 可能超过 uint256，但最终除法结果仍可安全放入 uint256
+/// @dev 处理“幻影溢出”：`a * b` 可能超过 uint256，但 `(a * b) / denominator` 最终仍可放入 uint256。
+/// 这在价格、流动性和 Q96/Q128 缩放值相乘时非常常见。若先做普通乘法会错误回退或截断；
+/// 本库保留乘积高低共 512 位，再执行精确除法，并提供明确的向下或向上取整版本。
 library FullMath {
     /// @notice 以完整精度计算 floor(a×b÷denominator)
     /// @dev 结果超过 uint256 或 denominator 为 0 时回退。算法由 Remco Bloemen 以 MIT 许可发布：

@@ -4,6 +4,10 @@ pragma solidity >=0.6.0;
 import './BytesLib.sol';
 
 /// @title 多跳交换路径数据处理函数
+/// @notice 编解码紧凑的 `token + fee + token + fee + token...` 路径。
+/// @dev 地址占 20 字节，V3 fee 占 3 字节，紧凑 bytes 比结构体数组节省 calldata gas。
+/// 精确输入按成交方向编码；精确输出为从最后一跳反推输入，通常反向编码。
+/// Router 用 `getFirstPool` 读取当前跳，再用 `skipToken` 推进路径。
 library Path {
     using BytesLib for bytes;
 

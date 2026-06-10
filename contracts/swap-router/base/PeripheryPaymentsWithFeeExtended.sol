@@ -6,6 +6,9 @@ import '@uniswap/v3-periphery/contracts/base/PeripheryPaymentsWithFee.sol';
 import '../interfaces/IPeripheryPaymentsWithFeeExtended.sol';
 import './PeripheryPaymentsExtended.sol';
 
+/// @title 面向调用者的带费清算快捷入口
+/// @notice 复用基础 fee 清算逻辑，并把扣费后的剩余资产 recipient 固定为 msg.sender。
+/// @dev 常放在 multicall 末尾，对最终 WETH/ETH 或 ERC20 结果收取聚合服务费。
 abstract contract PeripheryPaymentsWithFeeExtended is
     IPeripheryPaymentsWithFeeExtended,
     PeripheryPaymentsExtended,

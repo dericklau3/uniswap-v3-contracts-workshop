@@ -27,6 +27,23 @@ import './interfaces/callback/IUniswapV3MintCallback.sol';
 import './interfaces/callback/IUniswapV3SwapCallback.sol';
 import './interfaces/callback/IUniswapV3FlashCallback.sol';
 
+/// @title Uniswap V3 单一交易对的核心池
+/// @notice 管理一个 `(token0, token1, fee)` 市场中的价格、流动性、手续费和历史观察值。
+/// @dev 教学上可以把本合约拆成四本相互配合的账：
+/// 1. 价格账：`slot0` 保存当前平方根价格和 tick，`swap` 沿 tick 网格推动价格；
+/// 2. 流动性账：`ticks` 记录跨越边界时应增减多少活跃流动性，`positions` 记录每位 LP 的区间份额；
+/// 3. 手续费账：全局手续费增长按“每单位活跃流动性”累计，仓位通过区间快照结算自己的收益；
+/// 4. 时间账：`observations` 对 tick 和流动性按时间积分，为 TWAP 等外部风控提供历史依据。
+///
+/// 典型业务调用链：
+/// - 建池：Factory 部署池 -> `initialize` 设置首个价格；
+/// - 做市：PositionManager -> `mint` -> mint callback 付款；
+/// - 交易：Router -> `swap` -> swap callback 付款；
+/// - 退出：`burn` 先把本金记为待领取 -> `collect` 再转出本金与手续费；
+/// - 闪电贷：`flash` 先转出资产 -> callback 执行业务 -> 本交易内归还本金和费用。
+///
+/// Core 池故意不主动从用户账户 `transferFrom`。它先计算应收金额并回调调用者，再用余额差确认付款，
+/// 因而 Router、PositionManager 或套利合约可以在回调中自由组织付款来源，同时池仍能保证最终偿付。
 contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     using LowGasSafeMath for uint256;
     using LowGasSafeMath for int256;
@@ -266,7 +283,10 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @notice 初始化池子的初始价格，只能执行一次。
-    /// @dev 不使用 lock，因为初始化流程会把 unlocked 从默认 false 设置为 true。
+    /// @dev 新池部署后还不能交易或添加流动性，因为 `slot0.sqrtPriceX96` 默认为 0。
+    /// 首个调用者根据市场价格传入 `sqrt(price(token1/token0)) * 2^96`，合约再反推出对应 tick。
+    /// 初始化同时写入第一条 oracle 快照，并把 `unlocked` 设为 true。这里不使用 `lock`，
+    /// 正是因为初始化前锁的默认值为 false，而本函数负责完成从“未启用”到“可使用”的状态切换。
     function initialize(uint160 sqrtPriceX96) external override {
         require(slot0.sqrtPriceX96 == 0, 'AI');
 
@@ -553,7 +573,12 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @notice 给指定价格区间添加流动性，调用者必须在回调中把所需 token 支付给池子。
-    /// @dev noDelegateCall 通过 _modifyPosition 间接生效；回调后用余额差校验付款是否到账。
+    /// @dev 业务流程是“先记账、后收款、最后验账”：
+    /// 1. `_modifyPosition` 更新仓位和 tick，并算出当前价格下应投入多少 token0/token1；
+    /// 2. 池记录回调前余额，调用调用者的 `uniswapV3MintCallback`；
+    /// 3. 常见调用者 PositionManager 从真正的 payer 账户把代币转给池；
+    /// 4. 池比较回调前后余额，任何少付都会使整笔交易回退，前面的记账也随之撤销。
+    /// `recipient` 是 core 仓位所有者，不一定等于付款人；外围合约正是利用这一点代用户管理 NFT 仓位。
     function mint(
         address recipient,
         int24 tickLower,
@@ -588,7 +613,10 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @notice 提取调用者仓位中已经累计的 token0/token1，包括手续费和 burn 后待领取的本金。
-    /// @dev 这里不重新校验 tick，因为非法区间不可能存在非零 tokensOwed。
+    /// @dev `collect` 只提取已经记入 `tokensOwed` 的余额，不会主动刷新手续费。
+    /// 因此外围 PositionManager 通常会先执行一次 `burn(..., amount=0)`，把最新手续费结算到账，
+    /// 再调用 `collect`。这里不重新校验 tick，因为非法区间不可能形成带非零余额的合法仓位。
+    /// 用户可以只领取一部分，未领取部分继续保存在仓位账本中。
     function collect(
         address recipient,
         int24 tickLower,
@@ -614,7 +642,10 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @notice 从调用者仓位中移除流动性，并把可领取的 token 记入 tokensOwed。
-    /// @dev burn 不会直接转账，用户需要再调用 collect 提走；noDelegateCall 通过 _modifyPosition 间接生效。
+    /// @dev `burn` 的名字容易让初学者误以为它会立即把代币打回用户，实际这里只做会计结算：
+    /// 移除的流动性按当前价格换算为 token0/token1，并累加到 `tokensOwed`；真正转账由后续 `collect` 完成。
+    /// 将“减仓记账”和“资金转出”分开，可以让用户合并领取本金与手续费，也允许只领取部分资产。
+    /// 当 `amount=0` 时不会减仓，但仍会刷新该仓位截至当前的手续费，这是常见的手续费结算技巧。
     function burn(
         int24 tickLower,
         int24 tickUpper,
@@ -694,9 +725,16 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @notice 在池子内执行 swap。
-    /// @dev zeroForOne 表示卖 token0 买 token1；amountSpecified 为正是精确输入，为负是精确输出。
-    /// 每轮循环会在当前价格、价格限制、下一个初始化 tick、剩余数量四者中选择最近的停止点。
-    /// 转出目标 token 后，调用者必须在回调中支付输入 token，池子最后用余额差检查是否到账。
+    /// @dev `zeroForOne=true` 表示卖 token0 买 token1，价格会向较小 tick 移动；
+    /// `zeroForOne=false` 表示卖 token1 买 token0，价格会向较大 tick 移动。
+    /// `amountSpecified > 0` 是精确输入，用户锁定最多卖多少；小于 0 是精确输出，用户锁定必须买到多少。
+    ///
+    /// swap 不是一次公式计算到底，而是循环经过若干价格区间。每轮会比较四个停止条件：
+    /// 当前价格、下一个已初始化 tick、用户价格限制、剩余待成交数量。到达 tick 后应用 `liquidityNet`，
+    /// 因为有些 LP 仓位从该处开始生效，另一些从该处停止生效；随后用新的活跃流动性继续下一轮。
+    ///
+    /// 资金采用“先给输出、回调收输入”的模式。池先把输出 token 转给 recipient，再回调调用者付款，
+    /// 最后检查输入 token 余额至少增加了应付数量。任一环节失败，EVM 会把价格、转账和全部中间状态回退。
     function swap(
         address recipient,
         bool zeroForOne,

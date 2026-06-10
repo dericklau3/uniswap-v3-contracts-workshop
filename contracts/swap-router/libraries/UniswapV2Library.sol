@@ -4,6 +4,10 @@ pragma solidity >=0.5.0;
 import '@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol';
 import '@uniswap/v3-core/contracts/libraries/LowGasSafeMath.sol';
 
+/// @title V2 Pair 地址、储备与报价辅助库
+/// @notice 复现 V2 的 token 排序、CREATE2 Pair 地址和恒定乘积输出公式。
+/// @dev V2 使用全价格区间储备模型。给定实际输入和两侧储备后，`getAmountOut` 扣除 0.3% 手续费，
+/// 再按 `x * y = k` 计算可安全转出的另一种 token 数量。
 library UniswapV2Library {
     using LowGasSafeMath for uint256;
 

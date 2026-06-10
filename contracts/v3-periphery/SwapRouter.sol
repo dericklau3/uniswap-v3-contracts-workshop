@@ -19,6 +19,12 @@ import './interfaces/external/IWETH9.sol';
 
 /// @title Uniswap V3 兑换路由
 /// @notice 无状态 V3 兑换路由，负责串联一个或多个池子的 swap，并在回调中完成付款。
+/// @dev 精确输入按路径正向执行：第一跳从用户付款，中间输出暂存在 Router，后续跳用中间资产付款。
+/// 精确输出则从最后一池反向计算：为了拿到固定最终输出，callback 递归触发前一池，
+/// 直到算出并收取用户的真实输入，因此 exact-output path 的编码方向与 exact-input 相反。
+///
+/// Pool 先转出输出再回调收输入。Router 必须验证回调者是 Factory 对应的真实池，
+/// 否则攻击合约可伪造欠款请求。最小输出、最大输入和价格限制共同承担滑点保护。
 contract SwapRouter is
     ISwapRouter,
     PeripheryImmutableState,

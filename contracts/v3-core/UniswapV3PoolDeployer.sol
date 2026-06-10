@@ -5,6 +5,13 @@ import './interfaces/IUniswapV3PoolDeployer.sol';
 
 import './UniswapV3Pool.sol';
 
+/// @title V3 Pool 的确定性部署辅助合约
+/// @notice 用 CREATE2 部署池，并在构造期间向新池传递 factory、token、fee 与 tickSpacing。
+/// @dev Pool creationCode 对所有市场都相同，若把构造参数直接编码进 init code，不同参数会改变代码哈希，
+/// 不利于统一推导地址。这里先把参数暂存在 deployer 存储中，新 Pool 构造函数通过 `msg.sender.parameters()`
+/// 读取，随后立即删除。这样所有池共享同一个 init code hash，地址只由 factory、salt 和代码哈希决定。
+///
+/// 该临时状态只存在于同一笔同步部署调用中。Pool 构造完成前 `new` 不会返回，外部也不能插入另一笔部署。
 contract UniswapV3PoolDeployer is IUniswapV3PoolDeployer {
     struct Parameters {
         address factory;
