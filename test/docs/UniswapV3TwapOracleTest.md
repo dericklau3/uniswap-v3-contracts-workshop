@@ -2,51 +2,33 @@
 
 ## Purpose
 
-`test/UniswapV3TwapOracle.t.sol` verifies the owner-managed configuration and
-price normalization behavior of `UniswapV3TwapOracle` without requiring a fork
-or RPC endpoint.
+`test/UniswapV3TwapOracle.t.sol` 在固定以太坊主网 fork 上验证
+`UniswapV3TwapOracle`，所有代币和池均使用真实主网合约。
 
-## Setup
+## Fork Setup
 
-Each test deploys:
+- 主网区块：`24_361_930`
+- Uniswap V3 Factory：`0x1F98431c8aD98523631AE4a59f267346ea31F984`
+- 池费率：`3000`，即 `0.3%`
+- 基础币：主网 USDT
+- 计价币：主网 WETH 和 WBTC
 
-- A 6-decimal mock quote token representing USDC or USDT.
-- An 18-decimal mock priced token.
-- An oracle whose configuration owner is a dedicated test address.
-- Mock observable pools as needed by each scenario.
-
-The metadata token mocks expose only `decimals()`, which is the ERC20 metadata
-surface used by the oracle.
+测试通过 Factory 的 `getPool` 获取 WETH/USDT 与 WBTC/USDT 池，不硬编码池地址。
 
 ## Configuration Scenarios
 
-The tests verify:
+测试验证：
 
-- Constructor storage, zero addresses, and the 18-decimal maximum.
-- Only the owner can call `setPool`.
-- A pool must be a contract containing exactly the priced token and quote token.
-- The quote token cannot be configured as a priced token.
-- Pool assignment emits `PoolSet` and a later owner call can replace it.
+- 构造函数保存真实 USDT、owner 和目标 observation 容量。
+- 构造函数拒绝零地址 owner 与零地址基础币。
+- 只有 owner 可以调用 `setPool`。
+- `setPool` 拒绝零地址、非合约地址、基础币本身以及不匹配的真实池。
+- WETH/USDT 池容量不足时，`observationCardinalityNext` 被真实扩容。
+- WBTC/USDT 池容量已达标时，扩容调用被跳过。
 
 ## TWAP Scenarios
 
-The observable pool mock accepts only `[43_200, 0]` as its `observe` request.
-Any other period reverts, so successful price tests prove that the oracle uses
-the fixed 12-hour window.
+WETH 与 WBTC 价格均直接调用真实池的 `observe([3600, 0])`，验证一小时 TWAP。
+返回价格统一为 18 位精度，并通过足够宽的合理价格区间断言避免测试依赖精确市场价格。
 
-The mock returns cumulative values for a configurable arithmetic mean tick.
-It can also simulate insufficient history, whose error must propagate through
-`getPrice`.
-
-## Decimal Assumptions
-
-At tick zero, one base-token smallest unit equals one quote-token smallest
-unit. This intentionally produces:
-
-- `1e30` for an 18-decimal token quoted by a 6-decimal token.
-- `1e20` for an 8-decimal token quoted by a 6-decimal token.
-
-These values verify that the oracle prices one whole input token and then
-normalizes the resulting quote-token amount to 18 decimals. A nonzero-tick test
-also verifies token-address quote direction when the quote token is pool
-`token0`.
+运行测试需要 `foundry.toml` 中的 `mainnet` RPC 配置可用，或本机已有对应 fork 数据缓存。

@@ -76,10 +76,111 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         // 当前价格对应的 tick。
         int24 tick;
         // oracle observations 数组中最近一次写入的位置。
+        // 当前最新 observation 存在 observations 数组的哪个位置
         uint16 observationIndex;
         // 当前实际保存的 oracle 观察点数量上限。
+        // 当前 observations 环形数组实际可以使用多少个槽位。
         uint16 observationCardinality;
-        // 目标观察点数量上限，会在后续 observations.write 中逐步扩容。
+        // ------------------------------------------------------------
+        // observationCardinalityNext
+        // ------------------------------------------------------------
+        //
+        // observationCardinalityNext 表示：
+        // 希望未来扩容到多少个 observation 槽位。
+        //
+        // 注意：
+        // 它不是立即扩容，而是一个“目标容量”。
+        //
+        // Uniswap V3 为了节省 gas，不会一次性初始化很多 observation。
+        // 而是在后续 swap / mint / burn 等会写入 observation 的操作中，逐步扩容。
+        //
+        //
+        // ------------------------------------------------------------
+        // 简单例子
+        // ------------------------------------------------------------
+        //
+        // 刚创建 Pool 时，可能是：
+        //
+        // observationIndex = 0
+        // observationCardinality = 1
+        // observationCardinalityNext = 1
+        //
+        // 这表示：
+        // 当前最新 observation 在 observations[0]
+        // 当前实际只启用了 1 个槽位
+        // 未来目标容量也是 1
+        //
+        //
+        // 如果有人调用：
+        //
+        // increaseObservationCardinalityNext(5)
+        //
+        // 状态会变成：
+        //
+        // observationIndex = 0
+        // observationCardinality = 1
+        // observationCardinalityNext = 5
+        //
+        // 这表示：
+        // 当前实际还是只能用 1 个槽位
+        // 但是未来准备扩容到 5 个槽位
+        //
+        //
+        // 之后随着 swap / mint / burn 等操作发生，Pool 会逐步写入新的 observation。
+        //
+        // 第 1 次写入：
+        //
+        // observationIndex = 1
+        // observationCardinality = 2
+        // observationCardinalityNext = 5
+        //
+        // 第 2 次写入：
+        //
+        // observationIndex = 2
+        // observationCardinality = 3
+        // observationCardinalityNext = 5
+        //
+        // 第 3 次写入：
+        //
+        // observationIndex = 3
+        // observationCardinality = 4
+        // observationCardinalityNext = 5
+        //
+        // 第 4 次写入：
+        //
+        // observationIndex = 4
+        // observationCardinality = 5
+        // observationCardinalityNext = 5
+        //
+        // 此时扩容完成：
+        // 当前已经可以使用 5 个 observation 槽位。
+        //
+        //
+        // 第 5 次写入：
+        //
+        // observationIndex = 0
+        // observationCardinality = 5
+        // observationCardinalityNext = 5
+        //
+        // 因为 observationCardinality 已经等于 5，不能继续变大。
+        // observations 是环形数组，所以第 5 次写入会回到 observations[0]，覆盖旧数据。
+        //
+        //
+        // ------------------------------------------------------------
+        // 一句话总结
+        // ------------------------------------------------------------
+        //
+        // observationCardinalityNext:
+        // 只是“未来目标容量”，不是当前立即可用容量。
+        //
+        // observationCardinality:
+        // 才是当前实际已经启用的 observation 槽位数量。
+        //
+        // 当 observationCardinality < observationCardinalityNext 时，
+        // 后续写入 observation 的操作会逐步扩容。
+        //
+        // 当 observationCardinality == observationCardinalityNext 时，
+        // 扩容完成，后续写入会按照环形数组逻辑覆盖旧 observation。
         uint16 observationCardinalityNext;
         // 协议手续费分成比例：低 4 位给 token0，高 4 位给 token1，数值表示从 LP 手续费中抽取 1/x。
         uint8 feeProtocol;

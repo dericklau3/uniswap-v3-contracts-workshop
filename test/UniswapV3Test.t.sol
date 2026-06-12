@@ -49,49 +49,86 @@ contract UniswapV3Test is Test {
         vm.stopPrank();
     }
 
-    // function testV3Quoter() public {
-    //     vm.startPrank(account);
-    //     _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
-    //     vm.stopPrank();
-
-    //     uint256 tokenAAmount = 1e18;
-    //     uint256 tokenBAmount = 1e18;
-
-    //     // Single Pair Exact Input Quote (TokenA -> TokenB)
-    //     uint256 amountOut = v3Quoter.quoteExactInputSingle(
-    //         address(tokenA),
-    //         address(tokenB),
-    //         FEE,
-    //         tokenAAmount,
-    //         0
-    //     );
-
-    //     console.log("exactInput: tokenA -> tokenB quote:");
-    //     console.log(amountOut);
-
-    //     // Single Pair Exact Output Quote (TokenA -> TokenB)
-    //     uint256 amountIn = v3Quoter.quoteExactOutputSingle(
-    //         address(tokenA),
-    //         address(tokenB),
-    //         FEE,
-    //         tokenBAmount,
-    //         0
-    //     );
-
-    //     console.log("exactOutput: tokenA -> tokenB quote:");
-    //     console.log(amountIn);
-
-    //     assertGt(amountOut, 0);
-    //     assertGt(amountIn, 0);
-    // }
-
-    function testAddLiquidityV3() public {
+    function testV3Quoter() public {
         vm.startPrank(account);
-        (, uint128 liquidity,,) = _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+        _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
         vm.stopPrank();
 
-        assertGt(uint256(liquidity), 0);
+        uint256 tokenAAmount = 1e18;
+        uint256 tokenBAmount = 1e18;
+
+        // Single Pair Exact Input Quote (TokenA -> TokenB)
+        uint256 amountOut = v3Quoter.quoteExactInputSingle(
+            address(tokenA),
+            address(tokenB),
+            FEE,
+            tokenAAmount,
+            0
+        );
+
+        console.log("exactInput: tokenA -> tokenB quote:");
+        console.log(amountOut);
+
+        // Single Pair Exact Output Quote (TokenA -> TokenB)
+        uint256 amountIn = v3Quoter.quoteExactOutputSingle(
+            address(tokenA),
+            address(tokenB),
+            FEE,
+            tokenBAmount,
+            0
+        );
+
+        console.log("exactOutput: tokenA -> tokenB quote:");
+        console.log(amountIn);
+
+        assertGt(amountOut, 0);
+        assertGt(amountIn, 0);
     }
+
+    // function testAddLiquidityV3() public {
+    //     vm.startPrank(account);
+    //     (, uint128 liquidity,,) = _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+    //     vm.stopPrank();
+
+    //     assertGt(uint256(liquidity), 0);
+    // }
+
+    // function testRemoveLiquidityV3() public {
+    //     vm.startPrank(account);
+    //     (uint256 tokenId, uint128 liquidity,,) = _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+
+    //     uint256 tokenABalanceBefore = tokenA.balanceOf(account);
+    //     uint256 tokenBBalanceBefore = tokenB.balanceOf(account);
+
+    //     (uint256 amount0Removed, uint256 amount1Removed) = nonfungiblePositionManager.decreaseLiquidity(
+    //         INonfungiblePositionManager.DecreaseLiquidityParams({
+    //             tokenId: tokenId, liquidity: liquidity, amount0Min: 0, amount1Min: 0, deadline: type(uint256).max
+    //         })
+    //     );
+
+    //     (,,,,,,, uint128 remainingLiquidity,,,,) = nonfungiblePositionManager.positions(tokenId);
+
+    //     (uint256 amount0Collected, uint256 amount1Collected) = nonfungiblePositionManager.collect(
+    //         INonfungiblePositionManager.CollectParams({
+    //             tokenId: tokenId, recipient: account, amount0Max: type(uint128).max, amount1Max: type(uint128).max
+    //         })
+    //     );
+    //     vm.stopPrank();
+
+    //     assertGt(amount0Removed, 0);
+    //     assertGt(amount1Removed, 0);
+    //     assertEq(uint256(remainingLiquidity), 0);
+    //     assertEq(amount0Collected, amount0Removed);
+    //     assertEq(amount1Collected, amount1Removed);
+
+    //     if (address(tokenA) < address(tokenB)) {
+    //         assertEq(tokenA.balanceOf(account) - tokenABalanceBefore, amount0Collected);
+    //         assertEq(tokenB.balanceOf(account) - tokenBBalanceBefore, amount1Collected);
+    //     } else {
+    //         assertEq(tokenA.balanceOf(account) - tokenABalanceBefore, amount1Collected);
+    //         assertEq(tokenB.balanceOf(account) - tokenBBalanceBefore, amount0Collected);
+    //     }
+    // }
 
     // function testSingleSwapExactInputV3() public {
     //     vm.startPrank(account);
@@ -243,6 +280,10 @@ contract UniswapV3Test is Test {
         });
 
         (tokenId, liquidity, amount0, amount1) = nonfungiblePositionManager.mint(mintParams);
+
+        // 如果mint直接支付了eth，如果有残留eth，需要调用refundETH退回给用户
+        nonfungiblePositionManager.refundETH();
+
         console.log("tokenId, liquidity, amount0, amount1: ");
         console.log(tokenId);
         console.log(uint256(liquidity));

@@ -353,3 +353,7 @@ amount0 = 0
 amount1 = L * (sqrtB - sqrtA)
 ```
 
+##### 最大流动性限制
+
+`UniswapV3Pool.mint()` 里没有直接限制；限制在 `Tick.update()` 里，通过 `_updatePosition()` 把 `maxLiquidityPerTick` 传进去，最终检查 `liquidityGrossAfter <= maxLiquidityPerTick`
+

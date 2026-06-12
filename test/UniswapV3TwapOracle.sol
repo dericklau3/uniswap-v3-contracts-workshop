@@ -2,7 +2,6 @@
 pragma solidity ^0.8.30;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 import {IUniswapV3Pool} from "v3-core/contracts/interfaces/IUniswapV3Pool.sol";
@@ -10,20 +9,23 @@ import {OracleLibrary} from "v3-periphery/contracts/libraries/OracleLibrary.sol"
 
 import {Errors} from "./lib/Errors.sol";
 
-/// @title Uniswap V3 12 小时时间加权平均价格预言机
+/// @title Uniswap V3 1 小时时间加权平均价格预言机
 /// @notice 使用同一个不可变基础币为已配置的代币计价，并将所有价格统一为 18 位精度。
-contract UniswapV3TwapOracle is Ownable2Step {
+contract UniswapV3TwapOracle is Ownable {
     /// @notice owner 设置或替换代币计价池时触发。
     /// @param token 需要查询价格的代币。
     /// @param pool 同时包含 `token` 和 `quoteToken` 的 Uniswap V3 池。
     event PoolSet(address indexed token, address indexed pool);
 
     /// @notice 固定的 TWAP 观察窗口，单位为秒。
-    uint32 public constant TWAP_PERIOD = 12 hours;
+    uint32 public constant TWAP_PERIOD = 1 hours;
 
     /// @notice 当前部署中所有价格统一使用的基础币。
     address public immutable quoteToken;
     uint8 internal immutable quoteTokenDecimals;
+
+    /// @notice 每个已配置池至少应设置的下一阶段观察点容量。
+    uint16 public immutable minimumObservationCardinality;
 
     /// @notice 返回指定代币已配置的 Uniswap V3 池。
     mapping(address token => address pool) public pools;
@@ -32,7 +34,10 @@ contract UniswapV3TwapOracle is Ownable2Step {
     /// @notice 使用指定 owner 和当前链的基础币创建预言机。
     /// @param initialOwner 有权配置代币池的账户。
     /// @param quoteToken_ 所有已配置池统一使用的 USDC、USDT 或其他基础币。
-    constructor(address initialOwner, address quoteToken_) Ownable(initialOwner) {
+    /// @param minimumObservationCardinality_ 已配置池至少应具备的下一阶段观察点容量。
+    constructor(address initialOwner, address quoteToken_, uint16 minimumObservationCardinality_)
+        Ownable(initialOwner)
+    {
         require(quoteToken_ != address(0), Errors.ZeroAddress());
 
         uint8 decimals = IERC20Metadata(quoteToken_).decimals();
@@ -40,12 +45,13 @@ contract UniswapV3TwapOracle is Ownable2Step {
 
         quoteToken = quoteToken_;
         quoteTokenDecimals = decimals;
+        minimumObservationCardinality = minimumObservationCardinality_;
     }
 
     /// @notice 设置或替换用于计算 `token` 价格的 Uniswap V3 池。
     /// @dev 该池必须只包含 `token` 和不可变的 `quoteToken`，且仅 owner 可以调用。
     /// @param token 需要计价的代币。
-    /// @param pool 作为 12 小时价格观察来源的 Uniswap V3 池。
+    /// @param pool 作为 1 小时价格观察来源的 Uniswap V3 池。
     function setPool(address token, address pool) external onlyOwner {
         require(token != address(0) && pool != address(0), Errors.ZeroAddress());
         require(token != quoteToken, Errors.InvalidToken());
@@ -61,13 +67,18 @@ contract UniswapV3TwapOracle is Ownable2Step {
         uint8 decimals = IERC20Metadata(token).decimals();
         require(decimals <= 18, Errors.UnsupportedDecimals(token, decimals));
 
+        (,,,, uint16 observationCardinalityNext,,) = IUniswapV3Pool(pool).slot0();
+        if (observationCardinalityNext < minimumObservationCardinality) {
+            IUniswapV3Pool(pool).increaseObservationCardinalityNext(minimumObservationCardinality);
+        }
+
         pools[token] = pool;
         tokenDecimals[token] = decimals;
 
         emit PoolSet(token, pool);
     }
 
-    /// @notice 返回一个完整 `token` 的 12 小时 TWAP，并以基础币计价。
+    /// @notice 返回一个完整 `token` 的 1 小时 TWAP，并以基础币计价。
     /// @dev 返回值始终为 18 位精度；Uniswap 观察数据不足等错误会原样向上传递。
     /// @param token 已配置池并需要查询价格的代币。
     /// @return price 一个完整代币对应的基础币价值，统一为 18 位精度。
