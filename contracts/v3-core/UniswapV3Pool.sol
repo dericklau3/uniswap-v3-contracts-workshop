@@ -826,16 +826,27 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     }
 
     /// @notice 在池子内执行 swap。
-    /// @dev `zeroForOne=true` 表示卖 token0 买 token1，价格会向较小 tick 移动；
-    /// `zeroForOne=false` 表示卖 token1 买 token0，价格会向较大 tick 移动。
-    /// `amountSpecified > 0` 是精确输入，用户锁定最多卖多少；小于 0 是精确输出，用户锁定必须买到多少。
+    /// @dev `swap` 是 V3 池子的核心成交函数，可以把它理解成“沿价格曲线撮合用户订单”：
+    /// - `zeroForOne=true` 表示用户卖 token0 买 token1，池中 token0 变多、token1 变少，价格向较小 tick 移动；
+    /// - `zeroForOne=false` 表示用户卖 token1 买 token0，池中 token1 变多、token0 变少，价格向较大 tick 移动；
+    /// - `amountSpecified > 0` 是精确输入，用户限制“最多卖多少输入 token”；
+    /// - `amountSpecified < 0` 是精确输出，用户要求“必须买到多少输出 token”。
     ///
-    /// swap 不是一次公式计算到底，而是循环经过若干价格区间。每轮会比较四个停止条件：
-    /// 当前价格、下一个已初始化 tick、用户价格限制、剩余待成交数量。到达 tick 后应用 `liquidityNet`，
-    /// 因为有些 LP 仓位从该处开始生效，另一些从该处停止生效；随后用新的活跃流动性继续下一轮。
+    /// V3 的流动性不是全价格区间统一分布，而是由 LP 放在不同 tick 区间内。因此 swap 不能只套一个公式算到终点，
+    /// 必须一段一段穿过价格区间。每一轮 step 会同时考虑：
+    /// 1. 当前价格；
+    /// 2. 当前 word 内找到的下一个已初始化 tick，也就是最近的流动性边界；
+    /// 3. 用户给的 `sqrtPriceLimitX96`，防止成交价格滑到用户不能接受的位置；
+    /// 4. 用户剩余的输入预算或输出需求。
     ///
-    /// 资金采用“先给输出、回调收输入”的模式。池先把输出 token 转给 recipient，再回调调用者付款，
-    /// 最后检查输入 token 余额至少增加了应付数量。任一环节失败，EVM 会把价格、转账和全部中间状态回退。
+    /// 如果本轮价格刚好走到已初始化 tick，说明有 LP 仓位在这里开始或结束生效，需要执行 `ticks.cross`：
+    /// - 从左往右跨过 lower tick 时，该仓位进入活跃区间，活跃流动性增加；
+    /// - 从左往右跨过 upper tick 时，该仓位离开活跃区间，活跃流动性减少；
+    /// - 如果是 `zeroForOne` 向左走，则跨越方向相反，所以要把 `liquidityNet` 取反。
+    ///
+    /// 资金采用“先给输出、回调收输入、最后验余额”的模式。池先把输出 token 转给 `recipient`，
+    /// 再回调调用者的 `uniswapV3SwapCallback` 收取输入 token，最后用余额差确认输入确实到账。
+    /// 这种设计让路由器可以组合多跳、闪电交换等复杂路径；只要最终没付够输入，整笔交易都会回退。
     function swap(
         address recipient,
         bool zeroForOne,
@@ -858,6 +869,10 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         slot0.unlocked = false;
 
         // 缓存 swap 起点信息，跨 tick 和写 oracle 时需要这些快照。
+        // 注意这里记录的是“本次 swap 开始时”的流动性和 oracle 指针：
+        // 后面价格可能跨过多个 tick，活跃流动性会在内存中变化，但 oracle 写入仍要以 swap 起点作为观察值起点。
+        // feeProtocol 为 0 表示不开启协议费；非 0 值表示协议从 LP 手续费中分走 1 / feeProtocol，
+        // 例如 4 表示 25% 的手续费进入协议金库，剩余 75% 按流动性分给 LP。
         SwapCache memory cache =
             SwapCache({
                 liquidityStart: liquidity,
@@ -871,6 +886,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         bool exactInput = amountSpecified > 0;
 
         // 初始化 swap 运行状态：剩余数量、当前价格、费用增长和活跃流动性都先在内存里更新。
+        // 这样循环中每走一步都只改内存，等最终价格和费用都确定后再集中写回存储，减少 gas。
         SwapState memory state =
             SwapState({
                 amountSpecifiedRemaining: amountSpecified,
@@ -883,13 +899,16 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             });
 
         // 只要用户指定的数量还没完成，且价格还没触碰限制，就继续推进价格。
+        // 每次循环只处理“当前活跃流动性不变”的一小段价格区间；跨 tick 后再用新的流动性继续。
         while (state.amountSpecifiedRemaining != 0 && state.sqrtPriceX96 != sqrtPriceLimitX96) {
             StepComputations memory step;
 
             step.sqrtPriceStartX96 = state.sqrtPriceX96;
 
             // 在 tick 位图里找下一个流动性边界。价格跨过边界时，活跃流动性会按 liquidityNet 增减。
-            // zeroForOne 为 true 时价格向左移动，常见业务含义是用 token0 换 token1。
+            // tickBitmap 是稀疏索引，只记录“被 LP 仓位边界使用过”的 tick，避免 swap 逐个 tick 扫描。
+            // zeroForOne 为 true 时价格向左移动，业务含义是用 token0 换 token1；
+            // zeroForOne 为 false 时价格向右移动，业务含义是用 token1 换 token0。
             (step.tickNext, step.initialized) = tickBitmap.nextInitializedTickWithinOneWord(
                 state.tick,
                 tickSpacing,
@@ -904,9 +923,15 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             }
 
             // 把下一个 tick 转成价格，作为本轮 step 的候选终点。
+            // 本轮最多只能走到这个候选终点；如果用户的价格限制更近，则实际目标会改成价格限制。
             step.sqrtPriceNextX96 = TickMath.getSqrtRatioAtTick(step.tickNext);
 
             // 计算本轮能推进到哪里：下一个 tick、用户价格限制，或数量刚好耗尽的位置。
+            // `computeSwapStep` 不负责跨 tick，它只在“当前 liquidity 不变”的前提下计算：
+            // - 本轮结束价格；
+            // - 本轮实际消耗的输入；
+            // - 本轮实际产出的输出；
+            // - 本轮从输入资产中收取的手续费。
             (state.sqrtPriceX96, step.amountIn, step.amountOut, step.feeAmount) = SwapMath.computeSwapStep(
                 state.sqrtPriceX96,
                 (zeroForOne ? step.sqrtPriceNextX96 < sqrtPriceLimitX96 : step.sqrtPriceNextX96 > sqrtPriceLimitX96)
@@ -918,6 +943,8 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             );
 
             // 更新剩余待兑换数量和已计算出的另一侧数量；符号约定跟最终 amount0/amount1 保持一致。
+            // 精确输入：用户预算被 `amountIn + feeAmount` 消耗，输出用负数累计，表示池子稍后要付给用户。
+            // 精确输出：用户需求被 `amountOut` 满足，输入加手续费用正数累计，表示池子稍后要向用户收取。
             if (exactInput) {
                 state.amountSpecifiedRemaining -= (step.amountIn + step.feeAmount).toInt256();
                 state.amountCalculated = state.amountCalculated.sub(step.amountOut.toInt256());
@@ -927,6 +954,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             }
 
             // 如果开启了协议费，先从 LP 手续费中切出协议分成，再把剩余部分计给 LP。
+            // 业务上用户支付的是同一笔 swap fee；代码上先算总手续费，再拆成“协议收入”和“LP 收入”。
             if (cache.feeProtocol > 0) {
                 uint256 delta = step.feeAmount / cache.feeProtocol;
                 step.feeAmount -= delta;
@@ -934,14 +962,20 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
             }
 
             // 按每份活跃流动性累计本轮 LP 手续费。
+            // `feeGrowthGlobalX128` 是“每 1 单位活跃流动性累计赚到多少输入 token 手续费”的全局账本。
+            // 之后 LP 修改或领取仓位时，会用仓位区间内的手续费增长差额乘以自己的 liquidity 来结算收入。
             if (state.liquidity > 0)
+                // feeAmount * 2**128 / liquidity，结果是 Q128 定点数。
                 state.feeGrowthGlobalX128 += FullMath.mulDiv(step.feeAmount, FixedPoint128.Q128, state.liquidity);
 
             // 如果价格刚好到达下一个 tick，需要处理流动性边界穿越。
+            // 如果价格停在区间中间，说明用户数量或价格限制先耗尽，本轮不会改变活跃流动性。
             if (state.sqrtPriceX96 == step.sqrtPriceNextX96) {
                 // 已初始化 tick 才代表真实仓位边界，需要更新手续费外侧快照并取出 liquidityNet。
+                // 这些 outside 快照让后续仓位能判断“手续费是在区间内赚的，还是在区间外赚的”。
                 if (step.initialized) {
                     // 第一次跨已初始化 tick 时才读取 oracle 累计值，后续复用，节省 gas。
+                    // 同一笔 swap 里可能连续跨多个 tick，但它们共享同一个 blockTimestamp 和起点观察值。
                     if (!cache.computedLatestObservation) {
                         (cache.tickCumulative, cache.secondsPerLiquidityCumulativeX128) = observations.observeSingle(
                             cache.blockTimestamp,
@@ -953,6 +987,10 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
                         );
                         cache.computedLatestObservation = true;
                     }
+                    // `ticks.cross` 会把当前全局手续费增长和 oracle 累计值写入 tick 的 outside 区域，
+                    // 同时返回该 tick 对活跃流动性的净影响：
+                    // - tickNext 是 lower：liquidityNet = +liquidity；
+                    // - tickNext 是 upper：liquidityNet = -liquidity。
                     int128 liquidityNet =
                         ticks.cross(
                             step.tickNext,
@@ -962,12 +1000,18 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
                             cache.tickCumulative,
                             cache.blockTimestamp
                         );
-                    // 向左跨 tick 时，需要反向理解 liquidityNet；该值不可能是 int128 最小值，所以取负安全。
+                    // 上面的 liquidityNet 约定是“价格从左向右跨 tick”的影响。
+                    // zeroForOne 是从右向左走，进入/离开区间的方向反过来，所以要取负。
+                    // 该值不可能是 int128 最小值，因此取负安全。
                     if (zeroForOne) liquidityNet = -liquidityNet;
 
+                    // 把跨 tick 后的新活跃流动性写入内存状态，下一轮 step 会用它重新计算价格推进速度。
                     state.liquidity = LiquidityMath.addDelta(state.liquidity, liquidityNet);
                 }
 
+                // V3 的 tick 定义是“当前价格所在的离散区间”。
+                // 向左移动并落在 tickNext 边界时，当前 tick 应落到边界左侧，所以记为 tickNext - 1；
+                // 向右移动时则进入 tickNext 右侧区间，直接记为 tickNext。
                 state.tick = zeroForOne ? step.tickNext - 1 : step.tickNext;
             } else if (state.sqrtPriceX96 != step.sqrtPriceStartX96) {
                 // 没有刚好跨 tick，但价格移动了，则根据新价格重新计算 tick。
@@ -976,6 +1020,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         }
 
         // 如果 tick 变化，写入 oracle 并更新 slot0 的价格、tick 和 observation 指针。
+        // oracle 记录的是“从上一次观察到本次 swap 起点”的累计值；本次 swap 结束后的价格会成为新的 slot0。
         if (state.tick != slot0Start.tick) {
             (uint16 observationIndex, uint16 observationCardinality) =
                 observations.write(
@@ -998,9 +1043,11 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         }
 
         // 跨 tick 后活跃流动性可能变化，最后统一写回。
+        // 如果整个 swap 都停留在原 tick 区间内，活跃流动性没有变化，就无需写 storage。
         if (cache.liquidityStart != state.liquidity) liquidity = state.liquidity;
 
         // 写回全局 LP 手续费和协议费。全局手续费允许溢出；协议费需要在 uint128 满之前提取。
+        // 手续费增长只更新输入 token 那一侧：token0 输入更新 feeGrowthGlobal0X128，token1 输入更新 feeGrowthGlobal1X128。
         if (zeroForOne) {
             feeGrowthGlobal0X128 = state.feeGrowthGlobalX128;
             if (state.protocolFee > 0) protocolFees.token0 += state.protocolFee;
@@ -1010,11 +1057,13 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         }
 
         // 按 Uniswap 约定，正数表示池子应收，负数表示池子应付。
+        // 这组返回值同时传给回调，调用者据此知道自己需要支付哪种 token，以及已经收到了哪种 token。
         (amount0, amount1) = zeroForOne == exactInput
             ? (amountSpecified - state.amountSpecifiedRemaining, state.amountCalculated)
             : (state.amountCalculated, amountSpecified - state.amountSpecifiedRemaining);
 
         // 先把输出代币转给用户，再通过回调收输入代币，最后用余额差确认用户已付款。
+        // 这种“乐观转账”是 flash swap 能成立的原因：调用者可以先拿到输出，再在回调中完成付款或组合其他操作。
         if (zeroForOne) {
             // token0 -> token1：amount1 为负时，池子向用户发送 token1。
             if (amount1 < 0) TransferHelper.safeTransfer(token1, recipient, uint256(-amount1));

@@ -170,8 +170,6 @@ library SqrtPriceMath {
         uint256 numerator2 = sqrtRatioBX96 - sqrtRatioAX96;
 
         require(sqrtRatioAX96 > 0);
-        // first swap
-        // liquidity * 2**96 * (sqrt_p - sqrt_pl) / sqrt_p / sqrt_pl
         return
             roundUp
                 ? UnsafeMath.divRoundingUp(

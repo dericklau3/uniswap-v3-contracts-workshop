@@ -49,41 +49,62 @@ contract UniswapV3Test is Test {
         vm.stopPrank();
     }
 
-    function testV3Quoter() public {
-        vm.startPrank(account);
-        _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
-        vm.stopPrank();
+    // function testV3Quoter() public {
+    //     vm.startPrank(account);
+    //     _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+    //     _addLiquidityV3(address(tokenB), address(tokenC), 1000e18, 2000e18);
+    //     vm.stopPrank();
 
-        uint256 tokenAAmount = 1e18;
-        uint256 tokenBAmount = 1e18;
+    //     uint256 tokenAAmount = 1e18;
+    //     uint256 tokenBAmount = 1e18;
+    //     uint256 tokenCAmount = 1e18;
 
-        // Single Pair Exact Input Quote (TokenA -> TokenB)
-        uint256 amountOut = v3Quoter.quoteExactInputSingle(
-            address(tokenA),
-            address(tokenB),
-            FEE,
-            tokenAAmount,
-            0
-        );
+    //     // Single Pair Exact Input Quote (TokenA -> TokenB)
+    //     uint256 amountOut = v3Quoter.quoteExactInputSingle(
+    //         address(tokenA),
+    //         address(tokenB),
+    //         FEE,
+    //         tokenAAmount,
+    //         0
+    //     );
 
-        console.log("exactInput: tokenA -> tokenB quote:");
-        console.log(amountOut);
+    //     console.log("exactInput: tokenA -> tokenB quote:");
+    //     console.log(amountOut);
 
-        // Single Pair Exact Output Quote (TokenA -> TokenB)
-        uint256 amountIn = v3Quoter.quoteExactOutputSingle(
-            address(tokenA),
-            address(tokenB),
-            FEE,
-            tokenBAmount,
-            0
-        );
+    //     // Single Pair Exact Output Quote (TokenA -> TokenB)
+    //     uint256 amountIn = v3Quoter.quoteExactOutputSingle(
+    //         address(tokenA),
+    //         address(tokenB),
+    //         FEE,
+    //         tokenBAmount,
+    //         0
+    //     );
 
-        console.log("exactOutput: tokenA -> tokenB quote:");
-        console.log(amountIn);
+    //     console.log("exactOutput: tokenA -> tokenB quote:");
+    //     console.log(amountIn);
 
-        assertGt(amountOut, 0);
-        assertGt(amountIn, 0);
-    }
+    //     // Multi Pair Exact Input Quote (TokenA -> TokenB -> TokenC)
+    //     bytes memory exactInputPath =
+    //         abi.encodePacked(address(tokenA), FEE, address(tokenB), FEE, address(tokenC));
+    //     uint256 multiHopAmountOut = v3Quoter.quoteExactInput(exactInputPath, tokenAAmount);
+
+    //     console.log("exactInput: tokenA -> tokenB -> tokenC quote:");
+    //     console.log(multiHopAmountOut);
+
+    //     // Multi Pair Exact Output Quote (TokenA -> TokenB -> TokenC)
+    //     // Exact output paths are encoded in reverse order, from tokenOut back to tokenIn.
+    //     bytes memory exactOutputPath =
+    //         abi.encodePacked(address(tokenC), FEE, address(tokenB), FEE, address(tokenA));
+    //     uint256 multiHopAmountIn = v3Quoter.quoteExactOutput(exactOutputPath, tokenCAmount);
+
+    //     console.log("exactOutput: tokenA -> tokenB -> tokenC quote:");
+    //     console.log(multiHopAmountIn);
+
+    //     assertGt(amountOut, 0);
+    //     assertGt(amountIn, 0);
+    //     assertGt(multiHopAmountOut, 0);
+    //     assertGt(multiHopAmountIn, 0);
+    // }
 
     // function testAddLiquidityV3() public {
     //     vm.startPrank(account);
@@ -91,6 +112,37 @@ contract UniswapV3Test is Test {
     //     vm.stopPrank();
 
     //     assertGt(uint256(liquidity), 0);
+    // }
+
+    // function testIncreaseLiquidity() public {
+    //     vm.startPrank(account); 
+    //     (uint256 tokenId, uint128 initialLiquidity,,) =
+    //         _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+
+    //     uint256 tokenAAmountToAdd = 500e18;
+    //     uint256 tokenBAmountToAdd = 1000e18;
+    //     (uint256 amount0Desired, uint256 amount1Desired) = address(tokenA) < address(tokenB)
+    //         ? (tokenAAmountToAdd, tokenBAmountToAdd)
+    //         : (tokenBAmountToAdd, tokenAAmountToAdd);
+
+    //     (uint128 addedLiquidity, uint256 amount0Added, uint256 amount1Added) = nonfungiblePositionManager.increaseLiquidity(
+    //         INonfungiblePositionManager.IncreaseLiquidityParams({
+    //             tokenId: tokenId,
+    //             amount0Desired: amount0Desired,
+    //             amount1Desired: amount1Desired,
+    //             amount0Min: 0,
+    //             amount1Min: 0,
+    //             deadline: type(uint256).max
+    //         })
+    //     );
+
+    //     (,,,,,,, uint128 totalLiquidity,,,,) = nonfungiblePositionManager.positions(tokenId);
+    //     vm.stopPrank();
+
+    //     assertGt(uint256(addedLiquidity), 0);
+    //     assertGt(amount0Added, 0);
+    //     assertGt(amount1Added, 0);
+    //     assertEq(uint256(totalLiquidity), uint256(initialLiquidity) + uint256(addedLiquidity));
     // }
 
     // function testRemoveLiquidityV3() public {
@@ -130,30 +182,30 @@ contract UniswapV3Test is Test {
     //     }
     // }
 
-    // function testSingleSwapExactInputV3() public {
-    //     vm.startPrank(account);
-    //     _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
+    function testSingleSwapExactInputV3() public {
+        vm.startPrank(account);
+        _addLiquidityV3(address(tokenA), address(tokenB), 1000e18, 2000e18);
 
-    //     uint256 amountInTokenA = 1e18;
+        uint256 amountInTokenA = 1e18;
 
-    //     uint256 amountOut1 = swapRouter.exactInputSingle(
-    //         ISwapRouter.ExactInputSingleParams({
-    //             tokenIn: address(tokenA),
-    //             tokenOut: address(tokenB),
-    //             fee: FEE,
-    //             recipient: account,
-    //             deadline: type(uint256).max,
-    //             amountIn: amountInTokenA,
-    //             amountOutMinimum: 0,
-    //             sqrtPriceLimitX96: 0
-    //         })
-    //     );
-    //     console.log("exactInput: tokenA -> tokenB swap:");
-    //     console.log(amountOut1);
-    //     vm.stopPrank();
+        uint256 amountOut1 = swapRouter.exactInputSingle(
+            ISwapRouter.ExactInputSingleParams({
+                tokenIn: address(tokenA),
+                tokenOut: address(tokenB),
+                fee: FEE,
+                recipient: account,
+                deadline: type(uint256).max,
+                amountIn: amountInTokenA,
+                amountOutMinimum: 0,
+                sqrtPriceLimitX96: 0
+            })
+        );
+        console.log("exactInput: tokenA -> tokenB swap:");
+        console.log(amountOut1);
+        vm.stopPrank();
 
-    //     assertGt(amountOut1, 0);
-    // }
+        assertGt(amountOut1, 0);
+    }
 
     // function testSingleSwapExactOutputV3() public {
     //     vm.startPrank(account);

@@ -357,3 +357,347 @@ amount1 = L * (sqrtB - sqrtA)
 
 `UniswapV3Pool.mint()` 里没有直接限制；限制在 `Tick.update()` 里，通过 `_updatePosition()` 把 `maxLiquidityPerTick` 传进去，最终检查 `liquidityGrossAfter <= maxLiquidityPerTick`
 
+
+
+#### Path 构建
+
+token + fee + token + fee + token
+
+地址占 20 字节，V3 fee 占 3 字节
+
+Address + uint24 + Address + uint24 + Address
+
+abi.encodePacked(address,fee,address)
+
+```
+ExactInput：path 是正向的
+
+输入 WETH，兑换 USDC
+WETH -> fee -> USDC
+输入 WETH，算出 USDC，再算出 DAI
+WETH -> fee -> USDC -> fee -> DAI
+```
+
+```
+ExactOutput：path 是反向的
+
+想收到 1000 USDC，最多支付多少 WETH
+USDC -> fee -> WETH
+想收到 DAI，需要多少 USDC，再反推需要多少 WETH
+DAI -> fee -> USDC -> fee -> WETH
+```
+
+
+
+#### Swap
+
+##### sqrtPriceLimitX96
+
+`sqrtPriceLimitX96` 是 **Uniswap V3 swap 时的“价格保护线”**，这笔 swap 最多只能把池子的价格推到某个位置，超过这个价格就停止兑换，它控制的是“兑换后的价格边界”
+
+作用：
+
+1. 防止价格滑点过大，假设你用 USDT 买 WETH。如果池子流动性不够，你的大额买入会把 WETH 价格推高很多。`sqrtPriceLimitX96` 可以限制：最多只能买到 WETH 价格涨到某个位置，超过这个价格，swap 就停止。
+2. 允许部分成交，比如你想用 10,000 USDT 买 WETH，但是你设置了价格上限。结果价格达到上限时，只花了 6,000 USDT，剩下的 4,000 USDT 不会继续兑换。
+
+##### zeroForOne:
+
+假设 token0 = WETH, token1 = USDT
+
+swap token0 --> token1.      zeroForOne = true， 价格会下降，
+
+price = token1 / token0, pool里面的WETH增加，USDT减少, 所以 sqrtPriceLimitX96 必须 小于 当前价格
+
+swap token1 --> token0.      zeroForOne = false,  价格会上升
+
+price = token1 / token0, pool 里面的USDT增加，WETH减少，所以 sqrtPriceLimitX96 必须 大于 当前价格
+
+
+
+##### nextInitializedTickWithinOneWord
+
+`nextInitializedTickWithinOneWord` 找的不是“下一个 tickSpacing 位置”，而是：
+
+> 在当前 256 个 compressed tick 的 bitmap 里面，找下一个已经初始化过的 tick。
+
+
+
+```
+1. tick 和 compressed tick 的关系
+假设：
+tickSpacing = 60;
+那么真实 tick 和 compressed tick 的关系是：
+
+真实 tick:        0    60   120   180   240   300   360
+compressed tick: 0    1    2     3     4     5     6
+bitmap bit:      bit0 bit1 bit2  bit3  bit4  bit5  bit6
+
+也就是：
+compressed = tick / tickSpacing;
+
+例如：
+tick = 240
+compressed = 240 / 60 = 4
+所以当前 tick 240 对应 bitmap 里的 bit4。
+```
+
+```
+2. compressed tick 和 bitmap bit 的关系
+在 bitmap 里面，每个 compressed tick 对应一个 bit。
+一个 uint256 可以存 256 个 tick 是否初始化。
+
+假设这些 tick 都在同一个 word 里面，那么可以理解成：
+
+低位                                                  高位
+bit0     bit1      bit2       bit3      bit4       bit5
+tick 0   tick 60   tick 120   tick 180  tick 240   tick 300
+
+也就是说：
+compressed tick 0 -> bit0
+compressed tick 1 -> bit1
+compressed tick 2 -> bit2
+compressed tick 3 -> bit3
+compressed tick 4 -> bit4
+compressed tick 5 -> bit5
+
+所以：
+真实 tick = compressed tick * tickSpacing
+
+例如：
+bit4 对应 compressed tick 4
+真实 tick = 4 * 60 = 240
+```
+
+```
+3. bitmap 里面存的是什么？
+bitmap 里面的 bit 表示这个 tick 是否初始化。
+bit = 1，表示这个 tick 初始化了
+bit = 0，表示这个 tick 没初始化
+
+例如：
+tick 120 初始化了
+tick 180 没初始化
+tick 240 没初始化
+
+那么 bitmap 可以理解成：
+
+低位                                                       高位
+bit0       bit1       bit2       bit3       bit4
+tick 0     tick 60    tick 120   tick 180   tick 240
+0          0          1          0          0
+
+这里 bit2 = 1，表示 tick 120 初始化了。
+```
+
+```
+4. zeroForOne = true，往左找
+
+zeroForOne = true 表示 token0 换 token1，价格下降。
+
+价格下降时：
+tick 会变小
+所以搜索方向是：
+从当前 bit 往更小的 bit 编号找
+也就是：
+bit4 -> bit3 -> bit2 -> bit1 -> bit0
+```
+
+```
+例子一：当前 tick = 240，往左找
+
+假设：
+tickSpacing = 60;
+当前 tick = 240;
+zeroForOne = true;
+
+先计算 compressed tick：
+compressed = 240 / 60 = 4
+所以当前 tick 240 对应 bit4。
+假设 bitmap 是：
+
+低位                                                       高位
+bit0       bit1       bit2       bit3       bit4
+tick 0     tick 60    tick 120   tick 180   tick 240
+0          0          1          0          0
+
+意思是：
+tick 120 初始化了
+tick 180 没初始化
+tick 240 没初始化
+
+因为 zeroForOne = true，所以从当前 bit4 往更小的 bit 编号找：
+
+搜索方向：
+bit4 -> bit3 -> bit2 -> bit1 -> bit0
+
+逐步看：
+bit4 = 0，tick 240 没初始化
+bit3 = 0，tick 180 没初始化
+bit2 = 1，tick 120 初始化了
+
+所以找到的是 bit2。
+
+因此：
+compressed tick = 2
+tickNext = 2 * 60 = 120
+initialized = true
+
+返回结果：
+step.tickNext = 120;
+step.initialized = true;
+
+结论：
+当前 tick = 240
+往左找
+180 没初始化
+120 初始化
+所以找到的是 120，不是 180。
+```
+
+```
+例子二：当前 tick 自己已经初始化
+
+假设：
+tickSpacing = 60;
+当前 tick = 240;
+zeroForOne = true;
+
+bitmap 是：
+低位                                                       高位
+bit0       bit1       bit2       bit3       bit4
+tick 0     tick 60    tick 120   tick 180   tick 240
+0          0          1          0          1
+
+这里：
+bit4 = 1
+说明当前 tick 240 自己已经初始化了。
+zeroForOne = true 时，往左找是包含当前 tick 自己的。
+所以从 bit4 开始找：
+bit4 = 1
+直接找到当前 tick。
+返回：
+step.tickNext = 240;
+step.initialized = true;
+
+结论：
+zeroForOne = true 时，找的是 <= 当前 compressed tick 的最近初始化 tick。
+```
+
+```
+例子三：当前 word 里面左边没有初始化 tick
+
+假设：
+tickSpacing = 60;
+当前 tick = 240;
+zeroForOne = true;
+
+bitmap 是：
+低位                                                       高位
+bit0       bit1       bit2       bit3       bit4
+tick 0     tick 60    tick 120   tick 180   tick 240
+0          0          0          0          0
+
+从当前 bit4 往更小的 bit 编号找：
+bit4 -> bit3 -> bit2 -> bit1 -> bit0
+结果一个初始化 tick 都没有。
+这时候 nextInitializedTickWithinOneWord 不会无限往左找。
+
+因为它的名字里面有：WithinOneWord
+意思是只在当前 256-bit word 里面找。
+
+如果当前 word 里面找不到，它会返回当前 word 的边界，并且：
+
+initialized = false;
+假设当前处于 word 0，那么当前 word 的左边界是 compressed tick 0。
+
+所以返回：
+step.tickNext = 0;
+step.initialized = false;
+
+意思是：
+当前 word 里面没有找到初始化 tick。
+先把价格推进到这个 word 的边界。
+下一轮 swap 再继续去下一个 word 里面找。
+```
+
+
+
+##### computeSwapStep
+
+###### exactIn
+
+经过`nextInitializedTickWithinOneWord` 找到tickNext，根据tickNext拿到sqrtPriceNextX96,然后根据zeroForOne的方向计算currentSqrtPriceX96 --> sqrtPriceNextX96 所需的token
+
+zeroForOne: true   token0 换 token1 价格下降
+
+```
+根据交换方向计算“从当前价格完整走到目标价格”需要的净输入量。
+SqrtPriceMath.getAmount0Delta
+amount0 =
+liqudity * 2**96 * (currentSqrtPriceX96 - sqrtPriceNextX96) / (currentSqrtPriceX96 * sqrtPriceNextX96)
+
+# token输入数量,不足以将价格推进到目标价格
+amountIn < amount0
+ 计算amountIn 能推进到哪个价格
+ sqrtRatioNextX96 =
+ liquidity * 2**96 * currentSqrtPriceX96 / (liquidity * 2**96 + amount * currentSqrtPriceX96)
+ 根据当前价格 到 sqrtRatioNextX96 计算所需的净输入量
+ 根据当前价格 到 sqrtRatioNextX96 计算输出的数量
+ 
+ feeAmount = amountIn - amount0
+
+
+# token输入数量足以将价格推进到目标价格，还有剩余输入数量
+amountIn > amount0
+```
+
+zeroForOne: false   token1 换 token0 价格上升
+
+```
+SqrtPriceMath.getAmount1Delta
+amount1 =
+liquidity * （sqrtPriceNextX96 - currentSqrtPriceX96） / 2**96
+```
+
+
+
+
+
+###### exactOut
+
+经过`nextInitializedTickWithinOneWord` 找到tickNext，根据tickNext拿到sqrtPriceNextX96,然后根据zeroForOne的方向计算currentSqrtPriceX96 --> sqrtPriceNextX96 所需的token
+
+zeroForOne: true   token0 换 token1 价格下降
+
+```
+根据交换方向计算“从当前价格完整走到目标价格”需要的净输入量。
+SqrtPriceMath.getAmount0Delta
+amount0 =
+liqudity * 2**96 * (currentSqrtPriceX96 - sqrtPriceNextX96) / (currentSqrtPriceX96 * sqrtPriceNextX96)
+
+# token输出数量,不足以将价格推进到目标价格
+amountOut < amount0
+ 计算amountOut 能推进到哪个价格
+ sqrtRatioNextX96 =
+ liquidity * 2**96 * currentSqrtPriceX96 / (liquidity * 2**96 + amount * currentSqrtPriceX96)
+ 根据当前价格 到 sqrtRatioNextX96 计算所需的净输入量
+ 根据当前价格 到 sqrtRatioNextX96 计算输出的数量
+ 
+ 
+ feeAmount = amountIn * fee / (1e6 - fee)
+
+
+# token输出数量足以将价格推进到目标价格，还有剩余输入数量
+amountOut > amount0
+```
+
+
+
+zeroForOne: false   token1 换 token0 价格上升
+
+```
+SqrtPriceMath.getAmount1Delta
+amount1 =
+liquidity * （sqrtPriceNextX96 - currentSqrtPriceX96） / 2**96
+```
+
