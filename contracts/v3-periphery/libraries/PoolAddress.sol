@@ -6,7 +6,7 @@ pragma solidity >=0.5.0;
 /// @dev 计算结果只说明“若部署会在这个地址”，不保证该地址已有代码。
 /// Router 在预期池存在的路径中使用它，同时 callback 验证也依赖同一确定性地址。
 library PoolAddress {
-    bytes32 internal constant POOL_INIT_CODE_HASH = 0x6d8d409b721a2b71d4cb7bf5c497b0543bc2e1d16957e92e8ff8265cdd33c512;
+    bytes32 internal constant POOL_INIT_CODE_HASH = 0xec48a08a3ea6bf214384a0341ffc4e8df0574dae19b70b9fe19c07ead19bffb1;
 
     /// @notice 唯一标识池的有序 token 对和费率
     struct PoolKey {

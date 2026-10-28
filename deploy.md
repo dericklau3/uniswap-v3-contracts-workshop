@@ -14,6 +14,8 @@ bunx hardhat run scripts/deploy/deployFactory.ts --network bsctest
 
 # 5. Replace the POOL_INIT_CODE_HASH of PoolAddress
 
+# 6. config/contracts.json 需要有 WETH地址和u你swap v2 factory地址
+
 # 6. deploy UniswapV3SwapRouter
 bunx hardhat run scripts/deploy/deployRouter.ts --network bsctest
 ```

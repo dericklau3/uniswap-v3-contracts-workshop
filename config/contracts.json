@@ -1,0 +1,86 @@
+{
+	"weth": {
+		"address": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4"
+	},
+	"uniswapV2Factory": {
+		"address": "0xa0cec339C549BB10b9720744CdAfb15A21B085A9",
+		"args": {
+			"feeToSetter": "0xD524a42103c81abEe242870058F4A28b192d5720"
+		}
+	},
+	"uniswapV3Factory": {
+		"address": "0x352A92bAc9F383915B48B27237136eCA7Ea6485B"
+	},
+	"uniswapInterfaceMulticall": {
+		"address": "0xaA771b92264Df81560d9E71b5411feB51748222a"
+	},
+	"proxyAdmin": {
+		"address": "0x61d143c4c20b61E246a33e267434C2c44c1bf0D8"
+	},
+	"tickLens": {
+		"address": "0xEb8C226F18022E52DFaCBa14BdaCBe2d8Cf0c0b6"
+	},
+	"nftDescriptor": {
+		"address": "0x9d1E307330a734a4411ddAd1a99d73029b5D6dC8"
+	},
+	"nonfungibleTokenPositionDescriptorImpl": {
+		"address": "0x756e7db9D51553E8f7994157d58e0077C4f488A1",
+		"args": {
+			"weth": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4"
+		}
+	},
+	"nonfungibleTokenPositionDescriptor": {
+		"address": "0xC2C699671125FAF4F0497132003661E292d8dD81",
+		"args": {
+			"logic": "0x756e7db9D51553E8f7994157d58e0077C4f488A1",
+			"admin": "0x61d143c4c20b61E246a33e267434C2c44c1bf0D8",
+			"data": "0x"
+		}
+	},
+	"nonfungiblePositionManager": {
+		"address": "0xEf922Cf3C8430A52Ad30B84fF464BC51906A89Fe",
+		"args": {
+			"factory": "0x352A92bAc9F383915B48B27237136eCA7Ea6485B",
+			"weth": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4",
+			"tokenDescriptor": "0xC2C699671125FAF4F0497132003661E292d8dD81"
+		}
+	},
+	"v3Migrator": {
+		"address": "0xfE4c99119256E64B084D57c8120bD5c8AB2f486F",
+		"args": {
+			"factory": "0x352A92bAc9F383915B48B27237136eCA7Ea6485B",
+			"weth": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4",
+			"nonfungiblePositionManager": "0xEf922Cf3C8430A52Ad30B84fF464BC51906A89Fe"
+		}
+	},
+	"quoter": {
+		"address": "0xcC325CdDCBe0434Ba064D84bCe71816C83AC1B20",
+		"args": {
+			"factory": "0x352A92bAc9F383915B48B27237136eCA7Ea6485B",
+			"weth": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4"
+		}
+	},
+	"quoterV2": {
+		"address": "0xe2eDbCdD87cd52b33a41d67434F6D6a6b3075291",
+		"args": {
+			"factory": "0x352A92bAc9F383915B48B27237136eCA7Ea6485B",
+			"weth": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4"
+		}
+	},
+	"swapRouter": {
+		"address": "0xc98A0311Ba733fBd2f4b21397df598f9e5a814fc",
+		"args": {
+			"factory": "0x352A92bAc9F383915B48B27237136eCA7Ea6485B",
+			"weth": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4"
+		}
+	},
+	"swapRouter02": {
+		"address": "0x1Ba7A342477130d7C35CACC42879772ED6afC0A0",
+		"args": {
+			"v2Facotry": "0xa0cec339C549BB10b9720744CdAfb15A21B085A9",
+			"factory": "0x352A92bAc9F383915B48B27237136eCA7Ea6485B",
+			"positionManager": "0xEf922Cf3C8430A52Ad30B84fF464BC51906A89Fe",
+			"weth": "0xFea12dfD7FA27BFf872AEA477f728099B1c71Bd4"
+		}
+	}
+}
